@@ -2,6 +2,9 @@
 #include <stdlib.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <string.h>
+
+#define BUFFER_SIZE 1000
 
 struct arg_struct {
     int argc;
@@ -29,6 +32,23 @@ void* printArgs(void *args){
     return NULL;
 }
 
+void readLines(FILE *file) {
+    char buffer[BUFFER_SIZE];
+    while(fgets(buffer, BUFFER_SIZE, file) != NULL) {
+        int line_length = strlen(buffer);
+        if (buffer[line_length - 1] == '\n') {
+            buffer[line_length - 1] = '\0';
+        }
+        puts(buffer);
+    }
+}
+
+void readFile(char *fileName, FILE *file) {
+    file = fopen(fileName, "r");
+    readLines(file);
+    fclose(file);
+}
+
 int main(int argc, char** argv) {
     if (argc != 6) {
         printUsage();
@@ -41,5 +61,11 @@ int main(int argc, char** argv) {
     args.argv = argv;
     pthread_create(&newthread, NULL, printArgs, (void *)&args);
     pthread_join(newthread, NULL);
+
+    char *fileName = argv[1];
+
+    FILE *file = malloc(sizeof (FILE*));
+    readFile(fileName, file);
+
     return(0);
 }
