@@ -6,11 +6,6 @@
 
 #define BUFFER_SIZE 1000
 
-struct arg_struct {
-    int argc;
-    char **argv;
-};
-
 // error if printf or puts fails
 void handleOutputError() {
     exit(1);
@@ -22,15 +17,6 @@ void printUsage() {
     if (ret < 0) handleOutputError();
 }
 
-void* printArgs(void *args){
-    struct arg_struct *arguments = (struct arg_struct *) args;
-    int argc = arguments->argc;
-    char **argv = arguments->argv;
-    for (int i = 1; i < argc; ++i) {
-        printf("%s\n", argv[i]);
-    }
-    return NULL;
-}
 
 void readLines(FILE *file) {
     char buffer[BUFFER_SIZE];
@@ -54,15 +40,12 @@ int main(int argc, char** argv) {
         printUsage();
         return 1;
     }
-    pthread_t newthread;
-
-    struct arg_struct args;
-    args.argc = argc;
-    args.argv = argv;
-    pthread_create(&newthread, NULL, printArgs, (void *)&args);
-    pthread_join(newthread, NULL);
-
     char *fileName = argv[1];
+    long N = strtol(argv[2], NULL, 10);
+    int k_max = (int) strtol(argv[3], NULL, 10);
+    int B = (int) strtol(argv[4], NULL, 10);
+    int n_threads = (int) strtol(argv[5], NULL, 10);
+    printf("fileName: %s, N: %ld, k_max: %d, B: %d, n_threads: %d\n", fileName, N, k_max, B, n_threads);
 
     FILE *file = malloc(sizeof (FILE*));
     readFile(fileName, file);
