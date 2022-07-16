@@ -3,6 +3,11 @@
 #include <pthread.h>
 #include <unistd.h>
 
+struct arg_struct {
+    int argc;
+    char **argv;
+};
+
 // error if printf or puts fails
 void handleOutputError() {
     exit(1);
@@ -14,10 +19,12 @@ void printUsage() {
     if (ret < 0) handleOutputError();
 }
 
-void* test(void *arg){
-    while(1) {
-        printf("yo\n");
-        sleep(1000);
+void* printArgs(void *args){
+    struct arg_struct *arguments = (struct arg_struct *) args;
+    int argc = arguments->argc;
+    char **argv = arguments->argv;
+    for (int i = 1; i < argc; ++i) {
+        printf("%s\n", argv[i]);
     }
     return NULL;
 }
@@ -29,10 +36,10 @@ int main(int argc, char** argv) {
     }
     pthread_t newthread;
 
-    pthread_create(&newthread, NULL, test, NULL);
-    for (int i = 1; i < argc; ++i) {
-        printf("%s\n", argv[i]);
-    }
+    struct arg_struct args;
+    args.argc = argc;
+    args.argv = argv;
+    pthread_create(&newthread, NULL, printArgs, (void *)&args);
     pthread_join(newthread, NULL);
     return(0);
 }
