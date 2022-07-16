@@ -53,4 +53,4 @@ dkms.conf
 
 # private
 info
-hsl_codebook.txt
+src/hsl_codebook.txt
