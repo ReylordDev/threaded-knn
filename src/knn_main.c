@@ -87,21 +87,27 @@ int main(int argc, char** argv) {
     printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, class_count);
     if (N_max < N) N = N_max;
 
-    // this is sketchy.
     typedef struct {
         int class;
-        double dim[];
+        double *dim;
     } vec_t;
 
-    vec_t data[N];
+    typedef struct {
+        long size;
+        vec_t *data;
+    } data_set_t;
+    data_set_t data_set;
+    vec_t *data = malloc(N * sizeof(vec_t));
+    data_set.size = N;
+    data_set.data = data;
 
     // loop over every line
     char buffer[BUFFER_SIZE];
     for (int i = 0; i < N; ++i) {
         fgets(buffer, BUFFER_SIZE, file);
         vec_t val;
-        double dim[N];
-        memcpy(val.dim, dim, sizeof(dim));
+        double *dim = malloc(vec_dim * sizeof(double));
+        val.dim = dim;
         // parse buffer
         char *token = strtok(buffer, " ");
         val.dim[0] = strtod(token, NULL);
@@ -111,15 +117,30 @@ int main(int argc, char** argv) {
         }
         token = strtok(NULL, " ");
         val.class = (int) strtol(token, NULL, 10);
-        data[i] = val;
-        printf("0: %lg, 1: %lg, 2: %lg, 3: %lg, class: %d\n", val.dim[0], val.dim[1], val.dim[2], val.dim[3], val.class);
-    }
-    for (int i = 0; i < N; ++i) {
-        vec_t val = data[i];
-        printf("0: %lg, 1: %lg, 2: %lg, 3: %lg, class: %d\n", val.dim[0], val.dim[1], val.dim[2], val.dim[3], val.class);
+        data_set.data[i] = val;
     }
 
     // split dataset into B sub sets
+    data_set_t sub_sets[B];
+    int B_offsets = N % B;
+    long vectors_per_subset = N / B;
+    for (int i = 0; i < B; ++i) {
+        long size = vectors_per_subset + (i < B_offsets);
+        vec_t sub_set_data[size];
+        // fix this
+        for (int j = 0; j < size; ++j) {
+        }
+        sub_sets[i].data = sub_set_data;
+        sub_sets[i].size = size;
+    }
+    for (int i = 0; i < B; ++i) {
+        long sub_set_size = sub_sets[i].size;
+        vec_t *sub_set_data = sub_sets[i].data;
+        for (int j = 0; j < sub_set_size; ++j) {
+            vec_t val = sub_set_data[j];
+            printf("0: %lg, 1: %lg, 2: %lg, 3: %lg, class: %d\n", val.dim[0], val.dim[1], val.dim[2], val.dim[3], val.class);
+        }
+    }
         // same size if N mod B == 0, otherwise close to same size
     // loop over k from 1 to k_max
     for (int k = 0; k < k_max; ++k) {
