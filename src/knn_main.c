@@ -85,6 +85,39 @@ int main(int argc, char** argv) {
     int class_count;
     readInputHeader(file, &N_max, &vec_dim, &class_count);
     printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, class_count);
+    if (N_max < N) N = N_max;
+
+    // this is sketchy.
+    typedef struct {
+        int class;
+        double dim[];
+    } vec_t;
+
+    vec_t data[N];
+
+    // loop over every line
+    char buffer[BUFFER_SIZE];
+    for (int i = 0; i < N; ++i) {
+        fgets(buffer, BUFFER_SIZE, file);
+        vec_t val;
+        double dim[N];
+        memcpy(val.dim, dim, sizeof(dim));
+        // parse buffer
+        char *token = strtok(buffer, " ");
+        val.dim[0] = strtod(token, NULL);
+        for (int j = 1; j < vec_dim; ++j) {
+            token = strtok(NULL, " ");
+            val.dim[j] = strtod(token, NULL);
+        }
+        token = strtok(NULL, " ");
+        val.class = (int) strtol(token, NULL, 10);
+        data[i] = val;
+        printf("0: %lg, 1: %lg, 2: %lg, 3: %lg, class: %d\n", val.dim[0], val.dim[1], val.dim[2], val.dim[3], val.class);
+    }
+    for (int i = 0; i < N; ++i) {
+        vec_t val = data[i];
+        printf("0: %lg, 1: %lg, 2: %lg, 3: %lg, class: %d\n", val.dim[0], val.dim[1], val.dim[2], val.dim[3], val.class);
+    }
 
     // split dataset into B sub sets
         // same size if N mod B == 0, otherwise close to same size
@@ -95,13 +128,13 @@ int main(int argc, char** argv) {
             // use thread pool for this
         // assign most common class among k neighbors to vector
         // calculate classification quality: correct qualifications / all classifications
-        double class_qual = 0.9751;
+//        double class_qual = 0.9751;
         // print "%d %g\n", k, class_qual
-        printf("%d %g\n", k, class_qual);
+//        printf("%d %g\n", k, class_qual);
     }
     // print k with optimal class_qual (no parallelization)
-    int k_opt = 8;
-    printf("%d\n", k_opt);
+//    int k_opt = 8;
+//    printf("%d\n", k_opt);
 
     // Parallelization
     // n_threads number of worker threads
