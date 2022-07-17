@@ -53,11 +53,17 @@ void readLines(FILE *file) {
     }
 }
 
-void readFile(char *fileName, FILE *file) {
-    file = fopen(fileName, "r");
-    readLines(file);
-    fclose(file);
+void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_count_ptr) {
+    int header_arg_count = 3;
+    long headerArguments[header_arg_count ];
+    for (int i = 0; i < header_arg_count ; ++i) {
+        fscanf(file, "%ld ", &headerArguments[i]);
+    }
+    *N_max_ptr = headerArguments[0];
+    *vec_dim_ptr = (int) headerArguments[1];
+    *class_count_ptr = (int) headerArguments[2];
 }
+
 
 int main(int argc, char** argv) {
     if (argc != 6) {
@@ -73,18 +79,29 @@ int main(int argc, char** argv) {
 
     // read file contents
     FILE *file = malloc(sizeof (FILE*));
-    readFile(fileName, file);
+    file = fopen(fileName, "r");
+    long N_max;
+    int vec_dim;
+    int class_count;
+    readInputHeader(file, &N_max, &vec_dim, &class_count);
+    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, class_count);
 
     // split dataset into B sub sets
         // same size if N mod B == 0, otherwise close to same size
     // loop over k from 1 to k_max
+    for (int k = 0; k < k_max; ++k) {
         // Rotate through sub sets, setting i as test set and the other B-1 sets as training set
-            // calculate which k neighbors are closest using squared euclidean distance
-                // use thread pool for this
-            // assign most common class among k neighbors to vector
+        // calculate which k neighbors are closest using squared euclidean distance
+            // use thread pool for this
+        // assign most common class among k neighbors to vector
         // calculate classification quality: correct qualifications / all classifications
+        double class_qual = 0.9751;
         // print "%d %g\n", k, class_qual
+        printf("%d %g\n", k, class_qual);
+    }
     // print k with optimal class_qual (no parallelization)
+    int k_opt = 8;
+    printf("%d\n", k_opt);
 
     // Parallelization
     // n_threads number of worker threads
@@ -113,5 +130,6 @@ int main(int argc, char** argv) {
         // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
         // as well as information about the k_max nearest neighbors and the classification.
 
+    fclose(file);
     return(0);
 }
