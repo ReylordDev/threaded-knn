@@ -168,6 +168,13 @@ int main(int argc, char** argv) {
         // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
         // as well as information about the k_max nearest neighbors and the classification.
 
+    for (int i = 0; i < N; ++i) {
+        free(data_set.data[i].dim);
+    }
+    free(data_set.data);
+    for (int i = 0; i < B; ++i) {
+        free(sub_sets[i].data);
+    }
     fclose(file);
     return(0);
 }
