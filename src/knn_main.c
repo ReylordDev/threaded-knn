@@ -42,17 +42,6 @@ void printUsage() {
 }
 
 
-void readLines(FILE *file) {
-    char buffer[BUFFER_SIZE];
-    while(fgets(buffer, BUFFER_SIZE, file) != NULL) {
-        int line_length = strlen(buffer);
-        if (buffer[line_length - 1] == '\n') {
-            buffer[line_length - 1] = '\0';
-        }
-        puts(buffer);
-    }
-}
-
 void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_count_ptr) {
     int header_arg_count = 3;
     long headerArguments[header_arg_count ];
@@ -96,6 +85,7 @@ int main(int argc, char** argv) {
         long size;
         vec_t *data;
     } data_set_t;
+
     data_set_t data_set;
     vec_t *data = malloc(N * sizeof(vec_t));
     data_set.size = N;
@@ -119,29 +109,24 @@ int main(int argc, char** argv) {
         val.class = (int) strtol(token, NULL, 10);
         data_set.data[i] = val;
     }
+    // data_set contains all N vectors
 
     // split dataset into B sub sets
     data_set_t sub_sets[B];
     int B_offsets = N % B;
     long vectors_per_subset = N / B;
+    int data_start_index = 0;
     for (int i = 0; i < B; ++i) {
         long size = vectors_per_subset + (i < B_offsets);
-        vec_t sub_set_data[size];
+        vec_t *sub_set_data = malloc(size * sizeof(vec_t));
         // fix this
         for (int j = 0; j < size; ++j) {
+            sub_set_data[j] = data_set.data[j + data_start_index];
         }
         sub_sets[i].data = sub_set_data;
         sub_sets[i].size = size;
+        data_start_index += size;
     }
-    for (int i = 0; i < B; ++i) {
-        long sub_set_size = sub_sets[i].size;
-        vec_t *sub_set_data = sub_sets[i].data;
-        for (int j = 0; j < sub_set_size; ++j) {
-            vec_t val = sub_set_data[j];
-            printf("0: %lg, 1: %lg, 2: %lg, 3: %lg, class: %d\n", val.dim[0], val.dim[1], val.dim[2], val.dim[3], val.class);
-        }
-    }
-        // same size if N mod B == 0, otherwise close to same size
     // loop over k from 1 to k_max
     for (int k = 0; k < k_max; ++k) {
         // Rotate through sub sets, setting i as test set and the other B-1 sets as training set
@@ -149,13 +134,12 @@ int main(int argc, char** argv) {
             // use thread pool for this
         // assign most common class among k neighbors to vector
         // calculate classification quality: correct qualifications / all classifications
-//        double class_qual = 0.9751;
-        // print "%d %g\n", k, class_qual
-//        printf("%d %g\n", k, class_qual);
+        double class_qual = 0.9751;
+        printf("%d %g\n", k, class_qual);
     }
     // print k with optimal class_qual (no parallelization)
-//    int k_opt = 8;
-//    printf("%d\n", k_opt);
+    int k_opt = 8;
+    printf("%d\n", k_opt);
 
     // Parallelization
     // n_threads number of worker threads
