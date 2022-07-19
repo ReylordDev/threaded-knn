@@ -3,6 +3,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
+#include <math.h>
 
 #define BUFFER_SIZE 1000
 
@@ -52,7 +53,6 @@ void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_c
     *vec_dim_ptr = (int) headerArguments[1];
     *class_count_ptr = (int) headerArguments[2];
 }
-
 
 int main(int argc, char** argv) {
     if (argc != 6) {
@@ -149,9 +149,32 @@ int main(int argc, char** argv) {
     // overlap is allowed here, if one task in phase 1 is complete, tasks in the next phase is allowed to start
         // 1. Parallel computation of k_max nearest neighbors
             // for all test sets
-                // distance of each vector of test set to all vectors in all training sets
-                // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
-                // this list can be used for all k's later
+    for (int i = 0; i < B; ++i) {
+        // distance of each vector of test set to all vectors in all training sets
+        data_set_t test_set = sub_sets[i];
+        printf("test_set: %d\n", i);
+        for (int j = 0; j < test_set.size; ++j) {
+            vec_t vector = test_set.data[j];
+            printf("vector: %d\n", j);
+            for (int k = 0; k < B; ++k) {
+                if (i == k) continue;
+                data_set_t training_set = sub_sets[k];
+                printf("training_set: %d\n", k);
+                for (int l = 0; l < training_set.size; ++l) {
+                    vec_t training_vector = training_set.data[l];
+                    printf("training_vector: %d\n", l);
+                    double dist = 0;
+                    for (int m = 0; m < vec_dim; ++m) {
+                            dist += pow(vector.dim[m] - training_vector.dim[m], 2);
+                    }
+                    printf("distance: %lg\n", dist);
+                    // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
+                    // this list can be used for all k's later
+                }
+
+            }
+        }
+    }
         // 2. Parallel classification and scoring
             // for set in B testsets
                 // classification of all test vectors in set
