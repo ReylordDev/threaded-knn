@@ -8,6 +8,22 @@
 #define BUFFER_SIZE 1000
 
 typedef struct {
+    double *values;
+    int dims;
+} vec_t;
+
+typedef struct {
+    vec_t vec;
+    int class;
+    void *nearest_neighbors;
+} data_vec_t;
+
+typedef struct {
+    long size;
+    data_vec_t *data;
+} data_set_t;
+
+typedef struct {
     // necessary information for managing worker threads
 } thread_pool_t;
 
@@ -76,18 +92,8 @@ int main(int argc, char** argv) {
     printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, class_count);
     if (N_max < N) N = N_max;
 
-    typedef struct {
-        int class;
-        double *dim;
-    } vec_t;
-
-    typedef struct {
-        long size;
-        vec_t *data;
-    } data_set_t;
-
     data_set_t data_set;
-    vec_t *data = malloc(N * sizeof(vec_t));
+    data_vec_t *data = malloc(N * sizeof(data_vec_t));
     data_set.size = N;
     data_set.data = data;
 
@@ -95,19 +101,20 @@ int main(int argc, char** argv) {
     char buffer[BUFFER_SIZE];
     for (int i = 0; i < N; ++i) {
         fgets(buffer, BUFFER_SIZE, file);
-        vec_t val;
-        double *dim = malloc(vec_dim * sizeof(double));
-        val.dim = dim;
+        data_vec_t data_vec;
+        data_vec.vec.dims = vec_dim;
+        double *values = malloc(vec_dim * sizeof(double));
+        data_vec.vec.values = values;
         // parse buffer
         char *token = strtok(buffer, " ");
-        val.dim[0] = strtod(token, NULL);
+        data_vec.vec.values[0] = strtod(token, NULL);
         for (int j = 1; j < vec_dim; ++j) {
             token = strtok(NULL, " ");
-            val.dim[j] = strtod(token, NULL);
+            data_vec.vec.values[j] = strtod(token, NULL);
         }
         token = strtok(NULL, " ");
-        val.class = (int) strtol(token, NULL, 10);
-        data_set.data[i] = val;
+        data_vec.class = (int) strtol(token, NULL, 10);
+        data_set.data[i] = data_vec;
     }
     // data_set contains all N vectors
 
@@ -117,29 +124,36 @@ int main(int argc, char** argv) {
     long vectors_per_subset = N / B;
     int data_start_index = 0;
     for (int i = 0; i < B; ++i) {
+        data_set_t sub_set;
+
+        // calculate sub set size
         long size = vectors_per_subset + (i < B_offsets);
-        vec_t *sub_set_data = malloc(size * sizeof(vec_t));
-        // fix this
+        sub_set.size = size;
+
+        // copy data vectors from data set into sub set
+        data_vec_t *sub_set_data = malloc(size * sizeof(data_vec_t));
         for (int j = 0; j < size; ++j) {
             sub_set_data[j] = data_set.data[j + data_start_index];
         }
-        sub_sets[i].data = sub_set_data;
-        sub_sets[i].size = size;
+        sub_set.data = sub_set_data;
+        sub_sets[i] = sub_set;
+
         data_start_index += size;
     }
+
     // loop over k from 1 to k_max
-    for (int k = 0; k < k_max; ++k) {
+//    for (int k = 0; k < k_max; ++k) {
         // Rotate through sub sets, setting i as test set and the other B-1 sets as training set
         // calculate which k neighbors are closest using squared euclidean distance
             // use thread pool for this
         // assign most common class among k neighbors to vector
         // calculate classification quality: correct qualifications / all classifications
-        double class_qual = 0.9751;
-        printf("%d %g\n", k, class_qual);
-    }
+//        double class_qual = 0.9751;
+//        printf("%d %g\n", k, class_qual);
+//    }
     // print k with optimal class_qual (no parallelization)
-    int k_opt = 8;
-    printf("%d\n", k_opt);
+//    int k_opt = 8;
+//    printf("%d\n", k_opt);
 
     // Parallelization
     // n_threads number of worker threads
@@ -154,18 +168,18 @@ int main(int argc, char** argv) {
         data_set_t test_set = sub_sets[i];
         printf("test_set: %d\n", i);
         for (int j = 0; j < test_set.size; ++j) {
-            vec_t vector = test_set.data[j];
-            printf("vector: %d\n", j);
+            data_vec_t data_vec = test_set.data[j];
+            printf("data_vector: %d\n", j);
             for (int k = 0; k < B; ++k) {
                 if (i == k) continue;
                 data_set_t training_set = sub_sets[k];
                 printf("training_set: %d\n", k);
                 for (int l = 0; l < training_set.size; ++l) {
-                    vec_t training_vector = training_set.data[l];
-                    printf("training_vector: %d\n", l);
+                    data_vec_t training_data_vec = training_set.data[l];
+                    printf("training_data_vector: %d\n", l);
                     double dist = 0;
                     for (int m = 0; m < vec_dim; ++m) {
-                            dist += pow(vector.dim[m] - training_vector.dim[m], 2);
+                            dist += pow(data_vec.vec.values[m] - training_data_vec.vec.values[m], 2);
                     }
                     printf("distance: %lg\n", dist);
                     // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
@@ -192,7 +206,7 @@ int main(int argc, char** argv) {
         // as well as information about the k_max nearest neighbors and the classification.
 
     for (int i = 0; i < N; ++i) {
-        free(data_set.data[i].dim);
+        free(data_set.data[i].vec.values);
     }
     free(data_set.data);
     for (int i = 0; i < B; ++i) {
