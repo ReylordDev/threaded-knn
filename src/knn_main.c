@@ -70,56 +70,31 @@ void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_c
     *class_count_ptr = (int) headerArguments[2];
 }
 
-int main(int argc, char** argv) {
-    if (argc != 6) {
-        printUsage();
-        return 1;
-    }
-    char *fileName = argv[1];
-    long N = strtol(argv[2], NULL, 10);
-    int k_max = (int) strtol(argv[3], NULL, 10);
-    int B = (int) strtol(argv[4], NULL, 10);
-    int n_threads = (int) strtol(argv[5], NULL, 10);
-    printf("fileName: %s, N: %ld, k_max: %d, B: %d, n_threads: %d\n", fileName, N, k_max, B, n_threads);
-
-    // read file contents
-    FILE *file = malloc(sizeof (FILE*));
-    file = fopen(fileName, "r");
-    long N_max;
-    int vec_dim;
-    int class_count;
-    readInputHeader(file, &N_max, &vec_dim, &class_count);
-    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, class_count);
-    if (N_max < N) N = N_max;
-
-    data_set_t data_set;
-    data_vec_t *data = malloc(N * sizeof(data_vec_t));
-    data_set.size = N;
-    data_set.data = data;
-
-    // loop over every line
+void readInputData(FILE *file, data_set_t *data_set, int dims) {
     char buffer[BUFFER_SIZE];
+    long N = data_set->size;
     for (int i = 0; i < N; ++i) {
         fgets(buffer, BUFFER_SIZE, file);
         data_vec_t data_vec;
-        data_vec.vec.dims = vec_dim;
-        double *values = malloc(vec_dim * sizeof(double));
+        data_vec.vec.dims = dims;
+        double *values = malloc(dims * sizeof(double));
         data_vec.vec.values = values;
         // parse buffer
         char *token = strtok(buffer, " ");
         data_vec.vec.values[0] = strtod(token, NULL);
-        for (int j = 1; j < vec_dim; ++j) {
+        for (int j = 1; j < dims; ++j) {
             token = strtok(NULL, " ");
             data_vec.vec.values[j] = strtod(token, NULL);
         }
         token = strtok(NULL, " ");
         data_vec.class = (int) strtol(token, NULL, 10);
-        data_set.data[i] = data_vec;
+        data_set->data[i] = data_vec;
     }
-    // data_set contains all N vectors
 
-    // split dataset into B sub sets
-    data_set_t sub_sets[B];
+}
+
+void splitDataSet(data_set_t* src, data_set_t* dest, int B) {
+    long N = src->size;
     int B_offsets = N % B;
     long vectors_per_subset = N / B;
     int data_start_index = 0;
@@ -133,13 +108,59 @@ int main(int argc, char** argv) {
         // copy data vectors from data set into sub set
         data_vec_t *sub_set_data = malloc(size * sizeof(data_vec_t));
         for (int j = 0; j < size; ++j) {
-            sub_set_data[j] = data_set.data[j + data_start_index];
+            sub_set_data[j] = src->data[j + data_start_index];
         }
         sub_set.data = sub_set_data;
-        sub_sets[i] = sub_set;
+        dest[i] = sub_set;
 
         data_start_index += size;
     }
+
+}
+
+double euclideanDistance(data_vec_t *test_vec, data_vec_t *train_vec) {
+    double dist = 0;
+    int dims = test_vec->vec.dims;
+    for (int m = 0; m < dims; ++m) {
+        dist += pow(test_vec->vec.values[m] - train_vec->vec.values[m], 2);
+    }
+    return dist;
+}
+
+int main(int argc, char** argv) {
+    if (argc != 6) {
+        printUsage();
+        return 1;
+    }
+    char *fileName = argv[1];
+    long N = strtol(argv[2], NULL, 10);
+    int k_max = (int) strtol(argv[3], NULL, 10);
+    int B = (int) strtol(argv[4], NULL, 10);
+    int n_threads = (int) strtol(argv[5], NULL, 10);
+    printf("fileName: %s, N: %ld, k_max: %d, B: %d, n_threads: %d\n", fileName, N, k_max, B, n_threads);
+
+    // read file contents
+    FILE *file;
+    file = fopen(fileName, "r");
+    long N_max;
+    int vec_dim;
+    int class_count;
+    readInputHeader(file, &N_max, &vec_dim, &class_count);
+    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, class_count);
+
+    if (N_max < N) N = N_max;
+
+    data_set_t data_set;
+    data_vec_t *data = malloc(N * sizeof(data_vec_t));
+    data_set.data = data;
+    data_set.size = N;
+
+    readInputData(file, &data_set, vec_dim);
+    // data_set contains all N vectors
+
+    // split dataset into B sub sets
+    data_set_t *sub_sets = malloc(B * sizeof(data_set_t));
+    splitDataSet(&data_set, sub_sets, B);
 
     // loop over k from 1 to k_max
 //    for (int k = 0; k < k_max; ++k) {
@@ -177,10 +198,7 @@ int main(int argc, char** argv) {
                 for (int l = 0; l < training_set.size; ++l) {
                     data_vec_t training_data_vec = training_set.data[l];
                     printf("training_data_vector: %d\n", l);
-                    double dist = 0;
-                    for (int m = 0; m < vec_dim; ++m) {
-                            dist += pow(data_vec.vec.values[m] - training_data_vec.vec.values[m], 2);
-                    }
+                    double dist = euclideanDistance(&data_vec, &training_data_vec);
                     printf("distance: %lg\n", dist);
                     // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
                     // this list can be used for all k's later
@@ -212,6 +230,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < B; ++i) {
         free(sub_sets[i].data);
     }
+    free(sub_sets);
     fclose(file);
     return(0);
 }
