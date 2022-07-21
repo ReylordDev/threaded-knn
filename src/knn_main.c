@@ -376,8 +376,8 @@ print_list(struct list_head *head, int k_max)
         printf("Liste ist leer.\n");
     } else {
         printf("Liste:\n");
-        for (int i = 0; i <= k_max; ++i) {
-            struct neighbor_info *proc = head;
+        for (int i = 0; i < k_max; ++i) {
+            struct neighbor_info *proc = head->next;
             printf("%g\n", proc->dist);
             head = head->next;
         }
