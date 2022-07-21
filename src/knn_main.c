@@ -127,10 +127,10 @@ void readInputData(FILE *file, data_set_t *data_set, int dims) {
 
         data_vec_ptr->vec.dims = dims;
 
+        // this next line is problematic with 193l.
         struct neighbor_info *neighbors_ptr = malloc(sizeof (struct neighbor_info));
-        struct neighbor_info neighbors_head = *neighbors_ptr;
-        neighbors_head.dist = 0;
-        neighbors_head.vec_ptr = data_vec_ptr;
+        neighbors_ptr->dist = 0;
+        neighbors_ptr->vec_ptr = &data_vec_ptr->vec;
         list_init(neighbors_ptr);
         data_vec_ptr->neighbors = neighbors_ptr;
 
@@ -203,7 +203,6 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
 }
 
 int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
-    struct neighbor_info *neighbors = data_vec_ptr->neighbors;
     int class_count[total_classes];
     for (int i = 0; i < total_classes; i++) {
         class_count[i] = 0;
@@ -243,6 +242,8 @@ int main(int argc, char** argv) {
     int n_threads = (int) strtol(argv[5], NULL, 10);
     printf("fileName: %s, N: %ld, k_max: %d, B: %d, n_threads: %d\n", fileName, N, k_max, B, n_threads);
 
+    // create worker threads
+
     // read file contents
     FILE *file;
     file = fopen(fileName, "r");
@@ -267,19 +268,7 @@ int main(int argc, char** argv) {
     data_set_t *sub_sets = malloc(B * sizeof(data_set_t));
     splitDataSet(&data_set, sub_sets, B);
 
-    // loop over k from 1 to k_max
-//    for (int k = 0; k < k_max; ++k) {
-        // Rotate through sub sets, setting i as test set and the other B-1 sets as training set
-        // calculate which k neighbors are closest using squared euclidean distance
-            // use thread pool for this
-        // assign most common class among k neighbors to vector
-        // calculate classification quality: correct qualifications / all classifications
-//    }
-    // print k with optimal class_qual (no parallelization)
-
     // Parallelization
-    // n_threads number of worker threads
-    // created at the beginning of the program
     // thread pool consists of 4 functions
     // 3 computation phases, outside of pool, generalization is important here
     // overlap is allowed here, if one task in phase 1 is complete, tasks in the next phase is allowed to start
