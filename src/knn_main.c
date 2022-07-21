@@ -16,16 +16,22 @@ typedef struct {
     int dims;
 } vec_t;
 
-struct neighbor_info{
+struct neighbor_info {
     struct list_head head;
     vec_t *vec_ptr; // can be used to initialize data_vec
     double dist;
+};
+
+struct classification {
+    int k;
+    int class;
 };
 
 typedef struct {
     vec_t vec;
     int class;
     struct neighbor_info *neighbors;
+    struct classification classification;
 } data_vec_t;
 
 typedef struct {
@@ -178,7 +184,8 @@ double euclideanDistance(data_vec_t *test_vec, data_vec_t *train_vec) {
     return dist;
 }
 
-void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec, double distance, int k_max) {
+void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec, 
+                   double distance, int k_max) {
     struct list_head *anchor = &test_vec->neighbors->head;
     struct list_head *current = anchor;
     for (int i = 0; i < k_max; ++i) {
@@ -267,8 +274,8 @@ int main(int argc, char** argv) {
                     data_vec_t *training_data_vec = training_set.data[l];
                     double dist = euclideanDistance(data_vec, training_data_vec);
                     // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
-                    sorted_insert(data_vec, training_data_vec, dist, k_max);
                     // this list can be used for all k's later
+                    sorted_insert(data_vec, training_data_vec, dist, k_max);
                 }
 
             }
@@ -277,19 +284,30 @@ int main(int argc, char** argv) {
     }
     // 2. Parallel classification and scoring
     // for set in B testsets
-    // classification of all test vectors in set
-                // for each k
-                    // which class is most common among k neighbors
+    for (int i = 0; i < B; i++) {
+        data_set_t test_set = sub_sets[i];
+
+        // classification of all test vectors in set
+        for (int j = 0; j < test_set.size; j++) {
+            data_vec_t *test_vec_ptr = test_set.data[j];
+            
+        }
+            // for each k
+            for (int j = 0; j < k_max; j++) {
+                // which class is most common among k neighbors
+                
+            }
+    }
                     // on par: highest index wins
                     // store the results in a fitting data-structure (?)
             // think about efficiency for this phase
-        // 3. evaluation of a classification quality
-            // for each k
-                // compare classification of knn with original class
-                // calculate ratio: correct / all
-                // also in parallel
-        // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
-        // as well as information about the k_max nearest neighbors and the classification.
+    // 3. evaluation of a classification quality
+        // for each k
+            // compare classification of knn with original class
+            // calculate ratio: correct / all
+            // also in parallel
+    // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
+    // as well as information about the k_max nearest neighbors and the classification.
 
     for (int i = 0; i < N; ++i) {
         free(data_set.data[i]->vec.values);
