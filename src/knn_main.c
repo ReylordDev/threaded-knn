@@ -11,15 +11,16 @@ struct list_head {
     struct list_head *next, *prev;
 };
 
-struct neighbor_info{
-    struct list_head head;
-    double dist;
-};
-
 typedef struct {
     double *values;
     int dims;
 } vec_t;
+
+struct neighbor_info{
+    struct list_head head;
+    vec_t *vec_ptr; // can be used to initialize data_vec
+    double dist;
+};
 
 typedef struct {
     vec_t vec;
@@ -116,12 +117,17 @@ void readInputData(FILE *file, data_set_t *data_set, int dims) {
     long N = data_set->size;
     for (int i = 0; i < N; ++i) {
         fgets(buffer, BUFFER_SIZE, file);
-        data_vec_t data_vec;
+        data_vec_t *data_vec_ptr = malloc(sizeof(data_vec_t));
+        printf("created data_vec_ptr: %p\n", data_vec_ptr);
+        data_vec_t data_vec = *data_vec_ptr;
+        printf("created data_vec_ with address: %p\n", &data_vec);
 
         data_vec.vec.dims = dims;
 
         data_vec.neighbors = malloc(sizeof (struct neighbor_info));
         data_vec.neighbors->dist = 0;
+        data_vec.neighbors->vec_ptr = &data_vec.vec;
+        printf("created data_vec with vec_ptr: %p\n", &data_vec.vec);
         struct list_head *head = data_vec.neighbors;
         list_init(head);
         data_vec.neighbors->head = *head;
@@ -187,6 +193,8 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec, double distance,
         if (distance <= next->dist || current->next == anchor) {
             struct neighbor_info *new = malloc(sizeof (struct neighbor_info));
             new->dist = distance;
+            new->vec_ptr = train_vec;
+            printf("inserted vec_ptr: %p, distance: %g\n", train_vec, distance);
             list_add_tail(&new->head, current->next);
             return;
         } else {
@@ -378,7 +386,7 @@ print_list(struct list_head *head, int k_max)
         printf("Liste:\n");
         for (int i = 0; i < k_max; ++i) {
             struct neighbor_info *proc = head->next;
-            printf("%g\n", proc->dist);
+            printf("vec_ptr: %p, distance: %g\n", proc->vec_ptr, proc->dist);
             head = head->next;
         }
         printf("---\n");
