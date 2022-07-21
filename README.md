@@ -10,3 +10,4 @@ C implemententation of cross-validated knn for operating systems course
 * rename file name in comments and prints
 * valgrind needs to be run
 * save addresses or something in neighbor list
+* for statements have inc on different sides

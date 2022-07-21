@@ -274,12 +274,8 @@ int main(int argc, char** argv) {
             // use thread pool for this
         // assign most common class among k neighbors to vector
         // calculate classification quality: correct qualifications / all classifications
-//        double class_qual = 0.9751;
-//        printf("%d %g\n", k, class_qual);
 //    }
     // print k with optimal class_qual (no parallelization)
-//    int k_opt = 8;
-//    printf("%d\n", k_opt);
 
     // Parallelization
     // n_threads number of worker threads
@@ -309,6 +305,7 @@ int main(int argc, char** argv) {
         }
     }
     // 2. Parallel classification and scoring
+    // think about efficiency for this phase
     // for set in B testsets
     for (int i = 0; i < B; i++) {
         data_set_t test_set = sub_sets[i];
@@ -331,12 +328,32 @@ int main(int argc, char** argv) {
             
         }
     }
-            // think about efficiency for this phase
     // 3. evaluation of a classification quality
-        // for each k
+    // for each k
+    int k_opt = 0;
+    double best_classification = 0.0;
+    for (int k = 0; k < k_max; k++) {
+        int correct_qualification_counter = 0;
+        for (int i = 0; i < N; i++) {
+            data_vec_t *vec_ptr = data_set.data[i];
+            int correct_class = vec_ptr->class;
+            struct classification *classification = vec_ptr->classifications_ptr[k];
             // compare classification of knn with original class
-            // calculate ratio: correct / all
+            if (classification->class == correct_class) {
+                correct_qualification_counter++;
+            }
+        }
+        // calculate ratio: correct / all
             // also in parallel
+        double classification_quality = (double) correct_qualification_counter / N; 
+        printf("%d %g\n", k, classification_quality);
+        if (classification_quality > best_classification) {
+            best_classification = classification_quality;
+            k_opt = k;
+        }
+    }
+    printf("%d\n", k_opt);
+
     // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
     // as well as information about the k_max nearest neighbors and the classification.
 
