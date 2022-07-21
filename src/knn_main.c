@@ -31,7 +31,7 @@ typedef struct {
     vec_t vec;
     int class;
     struct neighbor_info *neighbors;
-    struct classification classification;
+    struct classification **classifications_ptr;
 } data_vec_t;
 
 typedef struct {
@@ -202,6 +202,35 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
     }
 }
 
+int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
+    struct neighbor_info *neighbors = data_vec_ptr->neighbors;
+    int class_count[total_classes];
+    for (int i = 0; i < total_classes; i++) {
+        class_count[i] = 0;
+    }
+    struct list_head *anchor = &data_vec_ptr->neighbors->head;
+    struct list_head *current = anchor;
+    for (int i = 0; i < k; ++i) {
+        struct neighbor_info *next = current->next;
+        data_vec_t *neighbor_vec_ptr = next->vec_ptr;
+        class_count[neighbor_vec_ptr->class]++;
+        current = current->next;
+    }
+    int max_count = 0;
+    int winner_class = 0;
+    for (int i = 0; i < total_classes; i++) {
+        if (class_count[i] > max_count) {
+            max_count = class_count[i];
+            winner_class = i;
+        } else {
+            if (class_count[i] == max_count && i > winner_class) {
+                winner_class = i;
+            }
+        }
+    }
+    return winner_class;
+}
+
 int main(int argc, char** argv) {
     if (argc != 6) {
         printUsage();
@@ -219,9 +248,9 @@ int main(int argc, char** argv) {
     file = fopen(fileName, "r");
     long N_max;
     int vec_dim;
-    int class_count;
-    readInputHeader(file, &N_max, &vec_dim, &class_count);
-    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, class_count);
+    int total_classes;
+    readInputHeader(file, &N_max, &vec_dim, &total_classes);
+    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, total_classes);
 
     if (N_max < N) N = N_max;
 
@@ -263,10 +292,8 @@ int main(int argc, char** argv) {
     for (int i = 0; i < B; ++i) {
         // distance of each vector of test set to all vectors in all training sets
         data_set_t test_set = sub_sets[i];
-        printf("test_set: %d\n", i);
         for (int j = 0; j < test_set.size; ++j) {
             data_vec_t *data_vec = test_set.data[j];
-            printf("data_vector: %d, val[0]: %lg\n", j, data_vec->vec.values[0]);
             for (int k = 0; k < B; ++k) {
                 if (i == k) continue;
                 data_set_t training_set = sub_sets[k];
@@ -279,7 +306,6 @@ int main(int argc, char** argv) {
                 }
 
             }
-            print_list(&data_vec->neighbors->head, k_max);
         }
     }
     // 2. Parallel classification and scoring
@@ -290,16 +316,21 @@ int main(int argc, char** argv) {
         // classification of all test vectors in set
         for (int j = 0; j < test_set.size; j++) {
             data_vec_t *test_vec_ptr = test_set.data[j];
-            
-        }
+            test_vec_ptr->classifications_ptr = malloc(k_max * sizeof(struct classification*));
             // for each k
-            for (int j = 0; j < k_max; j++) {
+            for (int k = 1; k <= k_max; k++) {
+                struct classification *classification_ptr = malloc(sizeof(struct classification));
+                int class = classify(test_vec_ptr, k, total_classes);
                 // which class is most common among k neighbors
-                
-            }
-    }
                     // on par: highest index wins
                     // store the results in a fitting data-structure (?)
+                classification_ptr->class = class;
+                classification_ptr->k = k;
+                test_vec_ptr->classifications_ptr[k-1] = classification_ptr;
+            }
+            
+        }
+    }
             // think about efficiency for this phase
     // 3. evaluation of a classification quality
         // for each k
