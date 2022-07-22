@@ -110,7 +110,7 @@ void printUsage() {
 void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_count_ptr) {
     int header_arg_count = 3;
     long headerArguments[header_arg_count ];
-    for (int i = 0; i < header_arg_count ; ++i) {
+    for (int i = 0; i < header_arg_count ; i++) {
         int n = fscanf(file, "%ld ", &headerArguments[i]);
         if (n != 1) {
             fprintf(stderr, "scanf error\n");
@@ -125,33 +125,37 @@ void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_c
 void readInputData(FILE *file, data_set_t *data_set, int dims) {
     char buffer[BUFFER_SIZE];
     long N = data_set->size;
-    for (int i = 0; i < N; ++i) {
+    for (long i = 0; i < N; i++) {
+        data_vec_t *data_vec_ptr = malloc(sizeof(data_vec_t));
+        data_vec_ptr->vec.dims = dims;
+
+        // initialize the neighbor list
+        struct neighbor_info *neighbors_ptr = malloc(sizeof(struct neighbor_info));
+        neighbors_ptr->dist = 0;
+        neighbors_ptr->vec_ptr = &data_vec_ptr->vec;
+        list_init(&neighbors_ptr->head);
+        data_vec_ptr->neighbors = neighbors_ptr;
+         
+        double *values = malloc(dims * sizeof(double));
+        data_vec_ptr->vec.values = values;
+         
+        // read line into buffer
         char *s = fgets(buffer, BUFFER_SIZE, file);
         if (s == NULL) {
             fprintf(stderr, "fgets error\n");
             return;
         }
-        data_vec_t *data_vec_ptr = malloc(sizeof(data_vec_t))   ;
 
-        data_vec_ptr->vec.dims = dims;
-
-        struct neighbor_info *neighbors_ptr = malloc(sizeof (struct neighbor_info));
-        neighbors_ptr->dist = 0;
-        neighbors_ptr->vec_ptr = &data_vec_ptr->vec;
-        list_init(&neighbors_ptr->head);
-        data_vec_ptr->neighbors = neighbors_ptr;
-
-        double *values = malloc(dims * sizeof(double));
-        data_vec_ptr->vec.values = values;
         // parse buffer
         char *token = strtok(buffer, " ");
         data_vec_ptr->vec.values[0] = strtod(token, NULL);
-        for (int j = 1; j < dims; ++j) {
+        for (int j = 1; j < dims; j++) {
             token = strtok(NULL, " ");
             data_vec_ptr->vec.values[j] = strtod(token, NULL);
         }
         token = strtok(NULL, " ");
         data_vec_ptr->class = (int) strtol(token, NULL, 10);
+         
         data_set->data[i] = data_vec_ptr;
     }
 
@@ -161,8 +165,8 @@ void splitDataSet(data_set_t* src, data_set_t* dest, int B) {
     long N = src->size;
     int B_offsets = N % B;
     long vectors_per_subset = N / B;
-    int data_start_index = 0;
-    for (int i = 0; i < B; ++i) {
+    long data_start_index = 0;
+    for (int i = 0; i < B; i++) {
         data_set_t sub_set;
 
         // calculate sub set size
@@ -171,12 +175,14 @@ void splitDataSet(data_set_t* src, data_set_t* dest, int B) {
 
         // copy data vectors from data set into sub set
         data_vec_t **sub_set_data = malloc(size * sizeof(data_vec_t*));
-        for (int j = 0; j < size; ++j) {
+        for (long j = 0; j < size; j++) {
             sub_set_data[j] = src->data[j + data_start_index];
         }
         sub_set.data = sub_set_data;
+         
         dest[i] = sub_set;
 
+        // start each sub-set at the correct index in the data-set
         data_start_index += size;
     }
 
@@ -195,7 +201,7 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
                    double distance, int k_max) {
     struct list_head *anchor = &test_vec->neighbors->head;
     struct list_head *current = anchor;
-    for (int i = 0; i < k_max; ++i) {
+    for (int i = 0; i < k_max; i++) {
         struct neighbor_info *next = (struct neighbor_info *) current->next;
         if (distance <= next->dist || current->next == anchor) {
             struct neighbor_info *new = malloc(sizeof (struct neighbor_info));
@@ -216,7 +222,7 @@ int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
     }
     struct list_head *anchor = &data_vec_ptr->neighbors->head;
     struct list_head *current = anchor;
-    for (int i = 0; i < k; ++i) {
+    for (int i = 0; i < k; i++) {
         struct neighbor_info *next = (struct neighbor_info *)current->next;
         data_vec_t *neighbor_vec_ptr = (data_vec_t *) next->vec_ptr;
         class_count[neighbor_vec_ptr->class]++;
@@ -290,17 +296,17 @@ int main(int argc, char** argv) {
     // thread pool consists of 4 functions
     // 3 computation phases, outside of pool, generalization is important here
     // overlap is allowed here, if one task in phase 1 is complete, tasks in the next phase is allowed to start
-        // 1. Parallel computation of k_max nearest neighbors
-            // for all test sets
-    for (int i = 0; i < B; ++i) {
+  
+    // 1. Parallel computation of k_max nearest neighbors
+    for (int i = 0; i < B; i++) {
         // distance of each vector of test set to all vectors in all training sets
         data_set_t test_set = sub_sets[i];
-        for (int j = 0; j < test_set.size; ++j) {
+        for (long j = 0; j < test_set.size; j++) {
             data_vec_t *data_vec = test_set.data[j];
-            for (int k = 0; k < B; ++k) {
+            for (int k = 0; k < B; k++) {
                 if (i == k) continue;
                 data_set_t training_set = sub_sets[k];
-                for (int l = 0; l < training_set.size; ++l) {
+                for (int l = 0; l < training_set.size; l++) {
                     data_vec_t *training_data_vec = training_set.data[l];
                     double dist = euclideanDistance(data_vec, training_data_vec);
                     // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
@@ -364,7 +370,7 @@ int main(int argc, char** argv) {
     // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
     // as well as information about the k_max nearest neighbors and the classification.
 
-    for (int i = 0; i < N; ++i) {
+    for (int i = 0; i < N; i++) {
         data_vec_t *data_vec = data_set.data[i];
         for (int i = 0; i < k_max; i++) {
             free(data_vec->classifications_ptr[i]);
@@ -376,7 +382,7 @@ int main(int argc, char** argv) {
         free(data_vec);
     }
     free(data_set.data);
-    for (int i = 0; i < B; ++i) {
+    for (int i = 0; i < B; i++) {
         free(sub_sets[i].data);
     }
     free(sub_sets);
@@ -454,7 +460,7 @@ print_list(struct list_head *head, int k_max)
         printf("Liste ist leer.\n");
     } else {
         printf("Liste:\n");
-        for (int i = 0; i < k_max; ++i) {
+        for (int i = 0; i < k_max; i++) {
             struct neighbor_info *next_neighbor = (struct neighbor_info *) head->next;
             data_vec_t *neighbor_data = (data_vec_t *) next_neighbor->vec_ptr;
             printf("val: %g, class: %d, distance: %g\n", neighbor_data->vec.values[0], neighbor_data->class, next_neighbor->dist);

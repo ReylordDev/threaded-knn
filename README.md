@@ -8,5 +8,4 @@ C implemententation of cross-validated knn for operating systems course
 * If I'm done and don't need the normal data_set then refactor to initialize subsets directly from input file
 * check with big data if long conversions are bad
 * rename file name in comments and prints
-* valgrind needs to be run
-* for statements have inc on different sides
+* there are small number errors compared to examples
