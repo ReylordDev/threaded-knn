@@ -11,3 +11,4 @@ C implementation of cross-validated knn for operating systems course
 * there are small number errors compared to examples
   * incorrect counting of correct class in low ks?
 * refactor classification
+* create python comparison program
