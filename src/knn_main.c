@@ -135,7 +135,6 @@ void readInputData(FILE *file, data_set_t *data_set, int dims) {
 
         data_vec_ptr->vec.dims = dims;
 
-        // this next line is problematic with 193l.
         struct neighbor_info *neighbors_ptr = malloc(sizeof (struct neighbor_info));
         neighbors_ptr->dist = 0;
         neighbors_ptr->vec_ptr = &data_vec_ptr->vec;
@@ -236,6 +235,17 @@ int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
         }
     }
     return winner_class;
+}
+ 
+ 
+void free_neighbors(data_vec_t *data_vec_ptr, int k_max) {
+    struct list_head *anchor = &data_vec_ptr->neighbors->head;
+    struct list_head *current = anchor->next;
+    do {
+        struct list_head *next = current->next;
+        free(list_del(current));
+        current = next; 
+    } while (current != anchor);
 }
 
 int main(int argc, char** argv) {
@@ -344,7 +354,7 @@ int main(int argc, char** argv) {
             // also in parallel
         double classification_quality = (double) correct_qualification_counter / N; 
         printf("%d %g\n", k, classification_quality);
-        if (classification_quality > best_classification) {
+        if (classification_quality >= best_classification) {
             best_classification = classification_quality;
             k_opt = k;
         }
@@ -355,7 +365,15 @@ int main(int argc, char** argv) {
     // as well as information about the k_max nearest neighbors and the classification.
 
     for (int i = 0; i < N; ++i) {
-        free(data_set.data[i]->vec.values);
+        data_vec_t *data_vec = data_set.data[i];
+        for (int i = 0; i < k_max; i++) {
+            free(data_vec->classifications_ptr[i]);
+        }
+        free(data_vec->classifications_ptr);
+        free(data_vec->vec.values);
+        free_neighbors(data_vec, k_max);
+        free(data_vec->neighbors);
+        free(data_vec);
     }
     free(data_set.data);
     for (int i = 0; i < B; ++i) {
@@ -445,3 +463,4 @@ print_list(struct list_head *head, int k_max)
         printf("---\n");
     }
 }
+ 
