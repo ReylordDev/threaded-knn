@@ -1,5 +1,5 @@
 # threaded-knn
-C implemententation of cross-validated knn for operating systems course
+C implementation of cross-validated knn for operating systems course
 
 # Compile
 `gcc -Wall -O3 -g -o knn_main knn_main.c -pthread -lpthread -lm`
@@ -9,3 +9,5 @@ C implemententation of cross-validated knn for operating systems course
 * check with big data if long conversions are bad
 * rename file name in comments and prints
 * there are small number errors compared to examples
+  * incorrect counting of correct class in low ks?
+* refactor classification

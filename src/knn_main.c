@@ -23,7 +23,6 @@ struct neighbor_info {
 };
 
 struct classification {
-    int k;
     int class;
 };
 
@@ -163,8 +162,9 @@ void readInputData(FILE *file, data_set_t *data_set, int dims) {
 
 void splitDataSet(data_set_t* src, data_set_t* dest, int B) {
     long N = src->size;
-    int B_offsets = N % B;
-    long vectors_per_subset = N / B;
+    ldiv_t div = ldiv(N, B);
+    long B_offsets = div.rem;
+    long vectors_per_subset = div.quot;
     long data_start_index = 0;
     for (int i = 0; i < B; i++) {
         data_set_t sub_set;
@@ -244,7 +244,7 @@ int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
 }
  
  
-void free_neighbors(data_vec_t *data_vec_ptr, int k_max) {
+void free_neighbors(data_vec_t *data_vec_ptr) {
     struct list_head *anchor = &data_vec_ptr->neighbors->head;
     struct list_head *current = anchor->next;
     do {
@@ -335,7 +335,6 @@ int main(int argc, char** argv) {
                 int class = classify(test_vec_ptr, k, total_classes);
                     // store the results in a fitting data-structure 
                 classification_ptr->class = class;
-                classification_ptr->k = k;
                 test_vec_ptr->classifications_ptr[k-1] = classification_ptr;
             }
             
@@ -357,7 +356,7 @@ int main(int argc, char** argv) {
         }
         // calculate ratio: correct / all
             // also in parallel
-        double classification_quality = (double) correct_qualification_counter / N; 
+        double classification_quality = (double) correct_qualification_counter / (double) N;
         printf("%d %g\n", k, classification_quality);
         if (classification_quality >= best_classification) {
             best_classification = classification_quality;
@@ -371,12 +370,12 @@ int main(int argc, char** argv) {
 
     for (int i = 0; i < N; i++) {
         data_vec_t *data_vec = data_set.data[i];
-        for (int i = 0; i < k_max; i++) {
-            free(data_vec->classifications_ptr[i]);
+        for (int j = 0; j < k_max; j++) {
+            free(data_vec->classifications_ptr[j]);
         }
         free(data_vec->classifications_ptr);
         free(data_vec->vec.values);
-        free_neighbors(data_vec, k_max);
+        free_neighbors(data_vec);
         free(data_vec->neighbors);
         free(data_vec);
     }
