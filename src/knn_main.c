@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
             for (int k = 0; k < B; k++) {
                 if (i == k) continue;
                 data_set_t training_set = sub_sets[k];
-                for (int l = 0; l < training_set.size; l++) {
+                for (long l = 0; l < training_set.size; l++) {
                     data_vec_t *training_data_vec = training_set.data[l];
                     double dist = euclideanDistance(data_vec, training_data_vec);
                     // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
@@ -324,16 +324,16 @@ int main(int argc, char** argv) {
         data_set_t test_set = sub_sets[i];
 
         // classification of all test vectors in set
-        for (int j = 0; j < test_set.size; j++) {
+        for (long j = 0; j < test_set.size; j++) {
             data_vec_t *test_vec_ptr = test_set.data[j];
             test_vec_ptr->classifications_ptr = malloc(k_max * sizeof(struct classification*));
             // for each k
             for (int k = 1; k <= k_max; k++) {
                 struct classification *classification_ptr = malloc(sizeof(struct classification));
-                int class = classify(test_vec_ptr, k, total_classes);
                 // which class is most common among k neighbors
                     // on par: highest index wins
-                    // store the results in a fitting data-structure (?)
+                int class = classify(test_vec_ptr, k, total_classes);
+                    // store the results in a fitting data-structure 
                 classification_ptr->class = class;
                 classification_ptr->k = k;
                 test_vec_ptr->classifications_ptr[k-1] = classification_ptr;
@@ -342,15 +342,14 @@ int main(int argc, char** argv) {
         }
     }
     // 3. evaluation of a classification quality
-    // for each k
     int k_opt = 0;
     double best_classification = 0.0;
     for (int k = 0; k < k_max; k++) {
-        int correct_qualification_counter = 0;
-        for (int i = 0; i < N; i++) {
-            data_vec_t *vec_ptr = data_set.data[i];
-            int correct_class = vec_ptr->class;
-            struct classification *classification = vec_ptr->classifications_ptr[k];
+        long correct_qualification_counter = 0;
+        for (long i = 0; i < N; i++) {
+            data_vec_t *data_vec_ptr = data_set.data[i];
+            int correct_class = data_vec_ptr->class;
+            struct classification *classification = data_vec_ptr->classifications_ptr[k];
             // compare classification of knn with original class
             if (classification->class == correct_class) {
                 correct_qualification_counter++;
