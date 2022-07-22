@@ -9,5 +9,4 @@ C implemententation of cross-validated knn for operating systems course
 * check with big data if long conversions are bad
 * rename file name in comments and prints
 * valgrind needs to be run
-* save addresses or something in neighbor list
 * for statements have inc on different sides
