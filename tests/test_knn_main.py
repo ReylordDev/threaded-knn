@@ -1,5 +1,6 @@
 import pytest
 import subprocess
+from src.knn import main as knn_main_py
  
 source_file_path = './src/knn_main.c'
 
@@ -24,9 +25,12 @@ def create_input_file(N_max: int, dimensions: int, class_count: int,
     return file.name
      
 def knn(file_name: str, N: int, k_max: int, B: int, n_threads: int):
-    command = f'./tests/test {file_name} {N}, {k_max}, {B}, {n_threads}'
+    command = f'./tests/test {file_name} {N} {k_max} {B} {n_threads}'
     return subprocess.run(command.split(' '), capture_output=True)
-    
+     
+def python_knn(file_name: str, N: int, k_max: int, B: int, n_threads: int):
+    knn_main_py(f'src/knn.py {file_name} {N} {k_max} {B} {n_threads}'.split(' '))
+     
 def print_result(winner: int, scores: dict[int, float]):
     print(f'Winner: {winner}')
     for key in scores.keys():
@@ -78,4 +82,6 @@ def test_example(compile):
     winner, scores = parse_result(ret)
     print(f'\nsrc/hsl_codebook.txt, 10000, 10, 5, 1')
     print_result(winner, scores)
+    print('comparison:')
+    python_knn('src/hsl_codebook.txt', 10000, 10, 5, 1)
 

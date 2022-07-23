@@ -1,19 +1,18 @@
 from io import TextIOWrapper
-from sklearn.neighbors import KNeighborsClassifier, KNeighborsTransformer
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import KFold 
 import numpy as np
 import sys
-import typing
 
-def main():
-    if len(sys.argv) != 6:
+def main(argv):
+    if len(argv) != 6:
         print("invalid arguments")
         return(1)
-    file_name: str = sys.argv[1]
-    N: int = int(sys.argv[2])
-    k_max: int = int(sys.argv[3])
-    B: int = int(sys.argv[4])
-    n_thread: int = int(sys.argv[5])
+    file_name: str = argv[1]
+    N: int = int(argv[2])
+    k_max: int = int(argv[3])
+    B: int = int(argv[4])
+    n_thread: int = int(argv[5])
      
     print(f'file_name: {file_name}, N: {N}, k_max: {k_max}, '
           f'B: {B}, n_thread: {n_thread}')
@@ -63,4 +62,4 @@ def main():
 
  
 if __name__ == "__main__":
-    exit(main())
+    exit(main(sys.argv))
