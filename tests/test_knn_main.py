@@ -68,6 +68,14 @@ def test_1(compile):
     ret = knn(file_name, 8, 7, 8, 1)
     assert ret.returncode == 0
     winner, scores = parse_result(ret)
+    print(f'\n{file_name}, 8, 7, 8, 1')
     print_result(winner, scores)
 
+     
+def test_example(compile):
+    ret = knn('src/hsl_codebook.txt', 10000, 10, 5, 1)
+    assert ret.returncode == 0
+    winner, scores = parse_result(ret)
+    print(f'\nsrc/hsl_codebook.txt, 10000, 10, 5, 1')
+    print_result(winner, scores)
 
