@@ -11,4 +11,6 @@ C implementation of cross-validated knn for operating systems course
 * there are small number errors compared to examples
   * incorrect counting of correct class in low ks?
 * refactor classification
+* write header file to get direct access to methods for tests
+* calculate a test by hand and write the classes
 

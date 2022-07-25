@@ -1,6 +1,6 @@
 import pytest
 import subprocess
-from src.knn import main as knn_main_py
+from src.knn import knn as py_knn
  
 source_file_path = './src/knn_main.c'
 
@@ -29,7 +29,9 @@ def knn(file_name: str, N: int, k_max: int, B: int, n_threads: int):
     return subprocess.run(command.split(' '), capture_output=True)
      
 def python_knn(file_name: str, N: int, k_max: int, B: int, n_threads: int):
-    knn_main_py(f'src/knn.py {file_name} {N} {k_max} {B} {n_threads}'.split(' '))
+    winner, scores = py_knn(f'src/knn.py {file_name} '
+                            f'{N} {k_max} {B} {n_threads}'.split(' '))
+    print_result(winner, scores)
      
 def print_result(winner: int, scores: dict[int, float]):
     print(f'Winner: {winner}')
@@ -56,8 +58,29 @@ def test_compile(compile):
     ret = compile
     assert ret.returncode == 0
     assert ret.stdout == b''
-
+     
 def test_1(compile):
+    data = [
+        ([2.0], 1),
+        ([4.0], 1),
+        ([16.0], 0),
+        ([3.0], 1),
+        ([5.0], 1),
+        ([17.0], 0),
+        ([14.0], 0),
+        ([15.0], 0),
+    ]
+    file_name = create_input_file(len(data), len(data[0][0]), 2, data)
+    N, k_max, B, n_threads= 8, 7, 8, 1
+    ret = knn(file_name, N, k_max, B, n_threads)
+    assert ret.returncode == 0
+    winner, scores = parse_result(ret)
+    print(f'\n{file_name}, {N}, {k_max}, {B}, {n_threads}')
+    print_result(winner, scores)
+    print('comparison:')
+    python_knn(file_name, N, k_max, B, n_threads)
+
+def test_2(compile):
     data = [
         ([9.4, 9.1], 0),
         ([3.0, 3.5], 1),
