@@ -1,6 +1,8 @@
+from numpy import array
 import pytest
 import subprocess
 from src.knn import knn as py_knn
+from src.knn import predictSample, readInputData, readInputHeader
  
 source_file_path = './src/knn_main.c'
 
@@ -34,7 +36,8 @@ def python_knn(file_name: str, N: int, k_max: int, B: int, n_threads: int):
     print_result(winner, scores)
      
 def print_result(winner: int, scores: dict[int, float]):
-    print(f'Winner: {winner}')
+    if winner != -1:
+        print(f'Winner: {winner}')
     for key in scores.keys():
         print(f'k: {key}, performance: {scores[key]}')
          
@@ -58,6 +61,30 @@ def test_compile(compile):
     ret = compile
     assert ret.returncode == 0
     assert ret.stdout == b''
+
+def test_sample():
+    data = [
+        ([8.5], 1),
+        ([11.0], 0),
+        ([12.0], 0),
+        ([6.0], 1),
+        ([15.0], 1),
+        ([16.0], 1),
+    ]
+    file_name = create_input_file(len(data), len(data[0][0]), 2, data)
+    N, k_max, B, n_threads= 6, 5, 6, 1
+    file = open(file_name, 'r')
+    N_max, dimensions, n_threads = readInputHeader(file)
+    if (N_max < N):
+        N = N_max
+    X_train,  Y_train = readInputData(file, N, dimensions)
+    sample = array([[10.0],]) 
+    prediction = predictSample(sample, 3, X_train, Y_train)
+    print_result(-1,  prediction)
+    prediction = predictSample(sample, 5, X_train, Y_train)
+    print_result(-1,  prediction)
+
+    
      
 def test_1(compile):
     data = [

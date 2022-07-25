@@ -69,6 +69,15 @@ def knn(argv) -> tuple[int, dict[int, float]]:
             winner = k
     return winner, scores 
 
+def predictSample(sample: NDArray, k: int,
+                  X_train: NDArray, y_train: NDArray) -> dict[int, float]:
+    results = {}
+    knn = KNeighborsClassifier(n_neighbors=k)
+    knn.fit(X_train, y_train)
+    prediction = knn.predict(sample)
+    results[k] = prediction
+    return results
+
 def main(argv):
     if len(argv) != 6:
         print("invalid arguments")
