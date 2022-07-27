@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
+#include "knn_main.h"
 
 #define BUFFER_SIZE 1000
 
@@ -254,6 +255,7 @@ void free_neighbors(data_vec_t *data_vec_ptr) {
     } while (current != anchor);
 }
 
+/*
 int main(int argc, char** argv) {
     if (argc != 6) {
         printUsage();
@@ -386,7 +388,7 @@ int main(int argc, char** argv) {
     free(sub_sets);
     return(0);
 }
-
+*/
 
 /* initialize "shortcut links" for empty list */
 void

@@ -5,10 +5,16 @@ from src.knn import knn as py_knn
 from src.knn import predictSample, readInputData, readInputHeader
  
 source_file_path = './src/knn_main.c'
+sample_test_file_path = './tests/test_predict_sample.c'
 
 @pytest.fixture
 def compile() -> subprocess.CompletedProcess:
     command: str = f'gcc -Wall -O3 -g -o tests/test {source_file_path} -pthread -lpthread -lm'
+    return subprocess.run(command.split(' '), capture_output=True)
+     
+@pytest.fixture
+def compile_sample() -> subprocess.CompletedProcess:
+    command: str = f'gcc -Wall -O3 -g -o tests/predict_sample {sample_test_file_path} src/knn_main.c -pthread -lpthread -lm'
     return subprocess.run(command.split(' '), capture_output=True)
 
 def create_input_file(N_max: int, dimensions: int, class_count: int, 
@@ -62,7 +68,8 @@ def test_compile(compile):
     assert ret.returncode == 0
     assert ret.stdout == b''
 
-def test_sample():
+# TODO: Explore this further.
+def test_sample(compile_sample):
     data = [
         ([8.5], 1),
         ([11.0], 0),
@@ -79,8 +86,10 @@ def test_sample():
         N = N_max
     X_train,  Y_train = readInputData(file, N, dimensions)
     sample = array([[10.0],]) 
+    subprocess.run(f'tests/predict_sample {file_name} {N} {1}'.split(' '))
     prediction = predictSample(sample, 2, X_train, Y_train)
     print_result(-1,  prediction)
+    subprocess.run(f'tests/predict_sample {file_name} {N} {5}'.split(' '))
     prediction = predictSample(sample, 5, X_train, Y_train)
     print_result(-1,  prediction)
 
