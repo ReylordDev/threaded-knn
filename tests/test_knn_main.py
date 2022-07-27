@@ -79,7 +79,7 @@ def test_sample():
         N = N_max
     X_train,  Y_train = readInputData(file, N, dimensions)
     sample = array([[10.0],]) 
-    prediction = predictSample(sample, 3, X_train, Y_train)
+    prediction = predictSample(sample, 2, X_train, Y_train)
     print_result(-1,  prediction)
     prediction = predictSample(sample, 5, X_train, Y_train)
     print_result(-1,  prediction)

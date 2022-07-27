@@ -468,3 +468,47 @@ print_list(struct list_head *head, int k_max)
     }
 }
  
+int predict_sample(double *values, long N, int k, char *file_name)
+{
+    // read file contents
+    FILE *file;
+    file = fopen(file_name, "r");
+    long N_max;
+    int vec_dim;
+    int total_classes;
+    readInputHeader(file, &N_max, &vec_dim, &total_classes);
+    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", 
+           N_max, vec_dim, total_classes);
+    if (N_max < N) N = N_max;
+
+    data_set_t data_set;
+    data_vec_t **data = malloc(N * sizeof(data_vec_t*));
+    data_set.data = data;
+    data_set.size = N;
+
+    readInputData(file, &data_set, vec_dim);
+    // data_set contains all N vectors
+    fclose(file);
+    
+    // create sample vector
+    data_vec_t *sample_data_vec_ptr = malloc(sizeof(data_vec_t));
+    sample_data_vec_ptr->vec.dims = vec_dim;
+
+    // initialize the neighbor list
+    struct neighbor_info *neighbors_ptr = malloc(sizeof(struct neighbor_info));
+    neighbors_ptr->dist = 0;
+    neighbors_ptr->vec_ptr = &sample_data_vec_ptr->vec;
+    list_init(&neighbors_ptr->head);
+    sample_data_vec_ptr->neighbors = neighbors_ptr;
+     
+    sample_data_vec_ptr->vec.values = values;
+    
+    // fill neighbor list
+    for (long i = 0; i < N; i++) {
+        data_vec_t *training_data_vec = data_set.data[i];
+        double dist = euclideanDistance(sample_data_vec_ptr, training_data_vec);
+        sorted_insert(sample_data_vec_ptr, training_data_vec, dist, k);
+    }
+    int prediction = classify(sample_data_vec_ptr, k, total_classes);
+    return prediction;
+}

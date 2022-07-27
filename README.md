@@ -7,7 +7,7 @@ C implementation of cross-validated knn for operating systems course
 # TODO / ideas
 * If I'm done and don't need the normal data_set then refactor to initialize subsets directly from input file
 * check with big data if long conversions are bad
-* rename file name in comments and prints
+* rename file name in comments and printaf
 * there are small number errors compared to examples
   * incorrect counting of correct class in low ks?
 * refactor classification
