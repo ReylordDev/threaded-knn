@@ -1,6 +1,8 @@
 from numpy import array
 import pytest
 import subprocess
+import random
+
 from src.knn import knn as py_knn
 from src.knn import predictSample, readInputData, readInputHeader
  
@@ -14,7 +16,7 @@ def compile() -> subprocess.CompletedProcess:
      
 @pytest.fixture
 def compile_sample() -> subprocess.CompletedProcess:
-    command: str = f'gcc -Wall -O3 -g -o tests/predict_sample {sample_test_file_path} src/knn_main.c -pthread -lpthread -lm'
+    command: str = f'gcc -Wall -O3 -g -o tests/predict_sample {sample_test_file_path} tests/test_source.c -pthread -lpthread -lm'
     return subprocess.run(command.split(' '), capture_output=True)
 
 def create_input_file(N_max: int, dimensions: int, class_count: int, 
@@ -42,10 +44,13 @@ def python_knn(file_name: str, N: int, k_max: int, B: int, n_threads: int):
     print_result(winner, scores)
      
 def print_result(winner: int, scores: dict[int, float]):
-    if winner != -1:
-        print(f'Winner: {winner}')
+    print(f'Winner: {winner}')
     for key in scores.keys():
         print(f'k: {key}, performance: {scores[key]}')
+
+def print_prediction(predictions: dict[int, int]):
+    for key in predictions.keys():
+        print(f'k: {key}, performance: [{predictions[key]}]')
          
 def parse_result(completed_process: subprocess.CompletedProcess
                  ) -> tuple[int, dict[int, float]]:
@@ -70,6 +75,8 @@ def test_compile(compile):
 
 # TODO: Explore this further.
 def test_sample(compile_sample):
+    k = 1
+    sample = array([[10.0],]) 
     data = [
         ([8.5], 1),
         ([11.0], 0),
@@ -78,6 +85,7 @@ def test_sample(compile_sample):
         ([15.0], 1),
         ([16.0], 1),
     ]
+    random.shuffle(data)
     file_name = create_input_file(len(data), len(data[0][0]), 2, data)
     N, k_max, B, n_threads= 6, 5, 6, 1
     file = open(file_name, 'r')
@@ -85,15 +93,35 @@ def test_sample(compile_sample):
     if (N_max < N):
         N = N_max
     X_train,  Y_train = readInputData(file, N, dimensions)
-    sample = array([[10.0],]) 
-    subprocess.run(f'tests/predict_sample {file_name} {N} {1}'.split(' '))
-    prediction = predictSample(sample, 2, X_train, Y_train)
-    print_result(-1,  prediction)
-    subprocess.run(f'tests/predict_sample {file_name} {N} {5}'.split(' '))
-    prediction = predictSample(sample, 5, X_train, Y_train)
-    print_result(-1,  prediction)
+    subprocess.run(f'tests/predict_sample {file_name} {N} {k}'.split(' '))
+    # prediction = predictSample(sample, k, X_train, Y_train)
+    prediction = {k: 0}
+    print_prediction(prediction)
 
-    
+def test_sample_3d(compile_sample):
+    k = 1
+    sample = array([[7.0, 7.0],]) 
+    data = [
+        ([3.0, 3.0], 1),
+        ([4.0, 3.0], 1),
+        ([3.0, 4.0], 1),
+        ([4.0, 4.0], 1),
+        ([9.0, 9.0], 0),
+        ([9.0, 8.0], 0),
+        ([8.0, 9.0], 0),
+        ([8.0, 7.5], 0),
+    ]
+    file_name = create_input_file(len(data), len(data[0][0]), 2, data)
+    N, k_max, B, n_threads= 8, 5, 8, 1
+    file = open(file_name, 'r')
+    N_max, dimensions, n_threads = readInputHeader(file)
+    if (N_max < N):
+        N = N_max
+    X_train,  Y_train = readInputData(file, N, dimensions)
+    subprocess.run(f'tests/predict_sample {file_name} {N} {k}'.split(' '))
+    # prediction = predictSample(sample, k, X_train, Y_train)
+    prediction = {k: 0}
+    print_prediction(prediction)
      
 def test_1(compile):
     data = [

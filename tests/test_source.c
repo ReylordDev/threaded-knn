@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
+#include "knn_main.h"
 
 #define BUFFER_SIZE 1000
 
@@ -194,6 +195,10 @@ double euclideanDistance(data_vec_t *test_vec, data_vec_t *train_vec) {
     for (int m = 0; m < dims; ++m) {
         dist += pow(test_vec->vec.values[m] - train_vec->vec.values[m], 2);
     }
+    printf("distance between source (%g, %g) and dest (%g, %g) is %g\n",
+           test_vec->vec.values[0], test_vec->vec.values[1],
+           train_vec->vec.values[0], train_vec->vec.values[1],
+           dist);
     return dist;
 }
 
@@ -208,14 +213,21 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
             new->dist = distance;
             new->vec_ptr = &train_vec->vec;
             list_add_tail(&new->head, current->next);
+            printf("inserted (%g, %g) with distance %g at pos %d\n",
+                   new->vec_ptr->values[0], new->vec_ptr->values[1],
+                   distance, i);
             return;
         } else {
+            printf("did not insert (%g, %g) with distance %g at pos %d\n",
+                   train_vec->vec.values[0], train_vec->vec.values[1],
+                   distance, i);
             current = current->next;
         }
     }
 }
 
 int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
+    // initialize counter for each class
     int class_count[total_classes];
     for (int i = 0; i < total_classes; i++) {
         class_count[i] = 0;
@@ -226,6 +238,9 @@ int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
         struct neighbor_info *next = (struct neighbor_info *)current->next;
         data_vec_t *neighbor_vec_ptr = (data_vec_t *) next->vec_ptr;
         class_count[neighbor_vec_ptr->class]++;
+        printf("found (%g, %g), with class: %d, count now at %d\n", 
+               neighbor_vec_ptr->vec.values[0], neighbor_vec_ptr->vec.values[1],
+               neighbor_vec_ptr->class, class_count[neighbor_vec_ptr->class]);
         current = current->next;
     }
     int max_count = 0;
@@ -252,139 +267,6 @@ void free_neighbors(data_vec_t *data_vec_ptr) {
         free(list_del(current));
         current = next; 
     } while (current != anchor);
-}
-
-int main(int argc, char** argv) {
-    if (argc != 6) {
-        printUsage();
-        return 1;
-    }
-    char *fileName = argv[1];
-    long N = strtol(argv[2], NULL, 10);
-    int k_max = (int) strtol(argv[3], NULL, 10);
-    int B = (int) strtol(argv[4], NULL, 10);
-    int n_threads = (int) strtol(argv[5], NULL, 10);
-    printf("fileName: %s, N: %ld, k_max: %d, B: %d, n_threads: %d\n", fileName, N, k_max, B, n_threads);
-
-    // create worker threads
-
-    // read file contents
-    FILE *file;
-    file = fopen(fileName, "r");
-    long N_max;
-    int vec_dim;
-    int total_classes;
-    readInputHeader(file, &N_max, &vec_dim, &total_classes);
-    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, total_classes);
-
-    if (N_max < N) N = N_max;
-
-    data_set_t data_set;
-    data_vec_t **data = malloc(N * sizeof(data_vec_t*));
-    data_set.data = data;
-    data_set.size = N;
-
-    readInputData(file, &data_set, vec_dim);
-    // data_set contains all N vectors
-    fclose(file);
-
-    // split dataset into B sub sets
-    data_set_t *sub_sets = malloc(B * sizeof(data_set_t));
-    splitDataSet(&data_set, sub_sets, B);
-
-    // Parallelization
-    // thread pool consists of 4 functions
-    // 3 computation phases, outside of pool, generalization is important here
-    // overlap is allowed here, if one task in phase 1 is complete, tasks in the next phase is allowed to start
-  
-    // 1. Parallel computation of k_max nearest neighbors
-    for (int i = 0; i < B; i++) {
-        // distance of each vector of test set to all vectors in all training sets
-        data_set_t test_set = sub_sets[i];
-        for (long j = 0; j < test_set.size; j++) {
-            data_vec_t *data_vec = test_set.data[j];
-            for (int k = 0; k < B; k++) {
-                if (i == k) continue;
-                data_set_t training_set = sub_sets[k];
-                for (long l = 0; l < training_set.size; l++) {
-                    data_vec_t *training_data_vec = training_set.data[l];
-                    double dist = euclideanDistance(data_vec, training_data_vec);
-                    // continuously build list, sorted by ascending distance, of k_max nearest neighbors for each vector in dataset
-                    // this list can be used for all k's later
-                    sorted_insert(data_vec, training_data_vec, dist, k_max);
-                }
-
-            }
-        }
-    }
-    // 2. Parallel classification and scoring
-    // think about efficiency for this phase
-    // for set in B testsets
-    for (int i = 0; i < B; i++) {
-        data_set_t test_set = sub_sets[i];
-
-        // classification of all test vectors in set
-        for (long j = 0; j < test_set.size; j++) {
-            data_vec_t *test_vec_ptr = test_set.data[j];
-            test_vec_ptr->classifications_ptr = malloc(k_max * sizeof(struct classification*));
-            // for each k
-            for (int k = 1; k <= k_max; k++) {
-                struct classification *classification_ptr = malloc(sizeof(struct classification));
-                // which class is most common among k neighbors
-                    // on par: highest index wins
-                int class = classify(test_vec_ptr, k, total_classes);
-                    // store the results in a fitting data-structure 
-                classification_ptr->class = class;
-                test_vec_ptr->classifications_ptr[k-1] = classification_ptr;
-            }
-            
-        }
-    }
-    // 3. evaluation of a classification quality
-    int k_opt = 0;
-    double best_classification = 0.0;
-    for (int k = 0; k < k_max; k++) {
-        long correct_qualification_counter = 0;
-        for (long i = 0; i < N; i++) {
-            data_vec_t *data_vec_ptr = data_set.data[i];
-            int correct_class = data_vec_ptr->class;
-            struct classification *classification = data_vec_ptr->classifications_ptr[k];
-            // compare classification of knn with original class
-            if (classification->class == correct_class) {
-                correct_qualification_counter++;
-            }
-        }
-        // calculate ratio: correct / all
-            // also in parallel
-        double classification_quality = (double) correct_qualification_counter / (double) N;
-        printf("%d %g\n", k, classification_quality);
-        if (classification_quality >= best_classification) {
-            best_classification = classification_quality;
-            k_opt = k;
-        }
-    }
-    printf("%d\n", k_opt);
-
-    // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
-    // as well as information about the k_max nearest neighbors and the classification.
-
-    for (int i = 0; i < N; i++) {
-        data_vec_t *data_vec = data_set.data[i];
-        for (int j = 0; j < k_max; j++) {
-            free(data_vec->classifications_ptr[j]);
-        }
-        free(data_vec->classifications_ptr);
-        free(data_vec->vec.values);
-        free_neighbors(data_vec);
-        free(data_vec->neighbors);
-        free(data_vec);
-    }
-    free(data_set.data);
-    for (int i = 0; i < B; i++) {
-        free(sub_sets[i].data);
-    }
-    free(sub_sets);
-    return(0);
 }
 
 /* initialize "shortcut links" for empty list */
@@ -504,10 +386,13 @@ int predict_sample(double *values, long N, int k, char *file_name)
     
     // fill neighbor list
     for (long i = 0; i < N; i++) {
-        data_vec_t *training_data_vec = data_set.data[i];
-        double dist = euclideanDistance(sample_data_vec_ptr, training_data_vec);
-        sorted_insert(sample_data_vec_ptr, training_data_vec, dist, k);
+        data_vec_t *training_data_vec_ptr = data_set.data[i];
+        double dist = euclideanDistance(sample_data_vec_ptr, training_data_vec_ptr);
+        sorted_insert(sample_data_vec_ptr, training_data_vec_ptr, dist, k);
+        //printf("insert x: %g, y: %g\n", training_data_vec->vec.values[0], 
+        //       training_data_vec->vec.values[1]);
     }
     int prediction = classify(sample_data_vec_ptr, k, total_classes);
+    printf("prediction: %d\n", prediction);
     return prediction;
 }
