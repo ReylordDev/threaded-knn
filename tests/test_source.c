@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <math.h>
-#include "knn_main.h"
 
 #define BUFFER_SIZE 1000
 
@@ -195,10 +194,6 @@ double euclideanDistance(data_vec_t *test_vec, data_vec_t *train_vec) {
     for (int m = 0; m < dims; ++m) {
         dist += pow(test_vec->vec.values[m] - train_vec->vec.values[m], 2);
     }
-    printf("distance between source (%g, %g) and dest (%g, %g) is %g\n",
-           test_vec->vec.values[0], test_vec->vec.values[1],
-           train_vec->vec.values[0], train_vec->vec.values[1],
-           dist);
     return dist;
 }
 
@@ -213,21 +208,14 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
             new->dist = distance;
             new->vec_ptr = &train_vec->vec;
             list_add_tail(&new->head, current->next);
-            printf("inserted (%g, %g) with distance %g at pos %d\n",
-                   new->vec_ptr->values[0], new->vec_ptr->values[1],
-                   distance, i);
             return;
         } else {
-            printf("did not insert (%g, %g) with distance %g at pos %d\n",
-                   train_vec->vec.values[0], train_vec->vec.values[1],
-                   distance, i);
             current = current->next;
         }
     }
 }
 
 int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
-    // initialize counter for each class
     int class_count[total_classes];
     for (int i = 0; i < total_classes; i++) {
         class_count[i] = 0;
@@ -238,9 +226,6 @@ int classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
         struct neighbor_info *next = (struct neighbor_info *)current->next;
         data_vec_t *neighbor_vec_ptr = (data_vec_t *) next->vec_ptr;
         class_count[neighbor_vec_ptr->class]++;
-        printf("found (%g, %g), with class: %d, count now at %d\n", 
-               neighbor_vec_ptr->vec.values[0], neighbor_vec_ptr->vec.values[1],
-               neighbor_vec_ptr->class, class_count[neighbor_vec_ptr->class]);
         current = current->next;
     }
     int max_count = 0;
@@ -386,13 +371,10 @@ int predict_sample(double *values, long N, int k, char *file_name)
     
     // fill neighbor list
     for (long i = 0; i < N; i++) {
-        data_vec_t *training_data_vec_ptr = data_set.data[i];
-        double dist = euclideanDistance(sample_data_vec_ptr, training_data_vec_ptr);
-        sorted_insert(sample_data_vec_ptr, training_data_vec_ptr, dist, k);
-        //printf("insert x: %g, y: %g\n", training_data_vec->vec.values[0], 
-        //       training_data_vec->vec.values[1]);
+        data_vec_t *training_data_vec = data_set.data[i];
+        double dist = euclideanDistance(sample_data_vec_ptr, training_data_vec);
+        sorted_insert(sample_data_vec_ptr, training_data_vec, dist, k);
     }
     int prediction = classify(sample_data_vec_ptr, k, total_classes);
-    printf("prediction: %d\n", prediction);
     return prediction;
 }

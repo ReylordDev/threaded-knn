@@ -98,9 +98,8 @@ def test_sample(compile_sample):
     prediction = {k: 0}
     print_prediction(prediction)
 
-def test_sample_3d(compile_sample):
-    k = 1
-    sample = array([[7.0, 7.0],]) 
+def test_sample_2d(compile_sample):
+    k = 2
     data = [
         ([3.0, 3.0], 1),
         ([4.0, 3.0], 1),
