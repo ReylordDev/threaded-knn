@@ -40,14 +40,36 @@ typedef struct {
 
 typedef struct {
     // necessary information for managing worker threads
+    pthread_t *threads;
 } thread_pool_t;
 
 typedef struct {
     // tba
+    int a, b;
 } Task;
 
+void *startThread(void* args) {
+    while (1) {
+        sleep(5);
+        printf("Thread Sleeping.\n");
+    }
+}
+
 // create thread pool and start thread count worker threads
-void thread_pool_init(thread_pool_t* thread_pool, int thread_count);
+void thread_pool_init(thread_pool_t* thread_pool, int thread_count) {
+    thread_pool->threads = malloc(thread_count * sizeof(pthread_t));
+    for (int i = 0; i < thread_count; i++) {
+        if (pthread_create(&thread_pool->threads[i], NULL, &startThread, NULL) != 0) {
+            perror("Failed to create thread");
+        }
+    }
+    sleep(15);
+    for (int i = 0; i < thread_count; i++) {
+        if (pthread_join(thread_pool->threads[i], NULL) != 0) {
+            perror("Failed to join thread");
+        }
+    }
+}
 
 // pass pointer to function with args pointer, enqueue it in task list and signalize worker thread
 // args might contain a set of indices to data vectors to calculate
