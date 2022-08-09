@@ -89,9 +89,9 @@ extern int
 list_empty(struct list_head *head);
 
 // temp
-Task task_queue[256];
+Task task_queue[100000];
 int task_count = 0;
-Task done_tasks[256];
+Task done_tasks[100000];
 int done_task_count = 0;
 int total_tasks = 0;
 
@@ -104,7 +104,6 @@ void submitTask(Task *task_ptr) {
     task_count++;
     pthread_mutex_unlock(&mutex_task);
     pthread_cond_signal(&cond_task);
-    printf("\n\nArgs: %p\n\n", task_ptr->args);
     free(task_ptr);
 }
 
@@ -150,9 +149,9 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
                    double distance, int k_max);
 
 void* insert_neighbor(struct args_neighbor *args) {
-    printf("Got:\n   &args: %p\n   &test_vec: %p\n   test_vec.vec.values[0]: %g\n   &neighbor_vec: %p\n   neighbor_vec.vec.values[0]: %g\n",
-           args, args->test_vector_ptr, args->test_vector_ptr->vec.values[0],
-           args->train_vector_ptr, args->train_vector_ptr->vec.values[0]);
+    // printf("Got:\n   &args: %p\n   &test_vec: %p\n   test_vec.vec.values[0]: %g\n   &neighbor_vec: %p\n   neighbor_vec.vec.values[0]: %g\n",
+    //        args, args->test_vector_ptr, args->test_vector_ptr->vec.values[0],
+    //        args->train_vector_ptr, args->train_vector_ptr->vec.values[0]);
     data_vec_t *test_vec = args->test_vector_ptr;
     data_vec_t *neighbor_vec = args->train_vector_ptr;
     int k_max = args->k_max;
@@ -225,13 +224,12 @@ int main(int argc, char** argv) {
                     data_vec_t *training_data_vec_ptr = training_set.data[l];
                     //insert_neighbor(data_vec, training_data_vec, k_max);
                     struct args_neighbor *args_ptr = malloc(sizeof(struct args_neighbor));
-                    printf("\n\nArgs_ptr: %p\n\n", args_ptr);
                     args_ptr->test_vector_ptr = data_vec_ptr;
                     args_ptr->train_vector_ptr = training_data_vec_ptr;
                     args_ptr->k_max = k_max;
-                    printf("Expected:\n   &args: %p\n   &test_vec: %p\n   test_vec.vec.values[0]: %g\n   &neighbor_vec: %p\n   neighbor_vec.vec.values[0]: %g\n",
-                           args_ptr, data_vec_ptr, data_vec_ptr->vec.values[0],
-                           training_data_vec_ptr, training_data_vec_ptr->vec.values[0]);
+                    // printf("Expected:\n   &args: %p\n   &test_vec: %p\n   test_vec.vec.values[0]: %g\n   &neighbor_vec: %p\n   neighbor_vec.vec.values[0]: %g\n",
+                    //        args_ptr, data_vec_ptr, data_vec_ptr->vec.values[0],
+                    //        training_data_vec_ptr, training_data_vec_ptr->vec.values[0]);
                     thread_pool_enqueue(thread_pool, &insert_neighbor, args_ptr);
                 }
 
