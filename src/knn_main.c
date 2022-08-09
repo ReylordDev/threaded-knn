@@ -572,7 +572,8 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
             struct neighbor_info *new = malloc(sizeof (struct neighbor_info));
             new->dist = distance;
             new->vec_ptr = &train_vec->vec;
-            list_add_tail(&new->head, current->next);
+            if (distance < next->dist) list_add_tail(&new->head, current->next);
+            else list_add(&new->head, current->next);
             return;
         } else {
             current = current->next;
