@@ -46,17 +46,19 @@ typedef struct {
 
 pthread_mutex_t mutex_task = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_task = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex_done_task = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond_done_task = PTHREAD_COND_INITIALIZER;
 
 typedef struct {
     void *(*function) (void *);
     void *args;
 } Task;
 
-typedef struct {
+struct args_neighbor {
     data_vec_t *test_vector_ptr;
     data_vec_t *train_vector_ptr;
     int k_max;
-} Args_phase_one;
+};
 
 /* initialize "shortcut links" for empty list */
 extern void
@@ -86,20 +88,25 @@ list_move_tail(struct list_head *entry, struct list_head *head);
 extern int
 list_empty(struct list_head *head);
 
-struct task_queue_str {
-    struct list_head head;
-    Task *task_ptr;
-} task_queue;
+// temp
+Task task_queue[256];
+int task_count = 0;
+Task done_tasks[256];
+int done_task_count = 0;
+int total_tasks = 0;
 
-int task_count;
+void execute_task(Task *task_ptr);
 
-void task_queue_init();
-
-Task dequeue_task();
-
-void enqueue_task(Task *task_ptr);
-
-void execeute_task(Task *task_ptr);
+//temp
+void submitTask(Task *task_ptr) {
+    pthread_mutex_lock(&mutex_task);
+    task_queue[task_count] = *task_ptr;
+    task_count++;
+    pthread_mutex_unlock(&mutex_task);
+    pthread_cond_signal(&cond_task);
+    printf("\n\nArgs: %p\n\n", task_ptr->args);
+    free(task_ptr);
+}
 
 void *start_thread(void* args);
 
@@ -142,10 +149,13 @@ double euclideanDistance(data_vec_t *test_vec, data_vec_t *train_vec);
 void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec, 
                    double distance, int k_max);
 
-void insert_neighbor(Args_phase_one args) {
-    data_vec_t *test_vec = args.test_vector_ptr;
-    data_vec_t *neighbor_vec = args.train_vector_ptr;
-    int k_max = args.k_max;
+void* insert_neighbor(struct args_neighbor *args) {
+    printf("Got:\n   &args: %p\n   &test_vec: %p\n   test_vec.vec.values[0]: %g\n   &neighbor_vec: %p\n   neighbor_vec.vec.values[0]: %g\n",
+           args, args->test_vector_ptr, args->test_vector_ptr->vec.values[0],
+           args->train_vector_ptr, args->train_vector_ptr->vec.values[0]);
+    data_vec_t *test_vec = args->test_vector_ptr;
+    data_vec_t *neighbor_vec = args->train_vector_ptr;
+    int k_max = args->k_max;
     double dist = euclideanDistance(test_vec, neighbor_vec);
     sorted_insert(test_vec, neighbor_vec, dist, k_max);
 }
@@ -172,11 +182,6 @@ int main(int argc, char** argv) {
     // create worker threads
     thread_pool_t *thread_pool = malloc(sizeof(thread_pool_t));
     thread_pool_init(thread_pool, n_threads);
-
-    // initialize task queue
-    task_queue_init();
-    // failing
-    printf("task_queue in main is %p\n", &task_queue);
 
     // read file contents
     FILE *file;
@@ -219,23 +224,23 @@ int main(int argc, char** argv) {
                 for (long l = 0; l < training_set.size; l++) {
                     data_vec_t *training_data_vec_ptr = training_set.data[l];
                     //insert_neighbor(data_vec, training_data_vec, k_max);
-                    printf("creating task: data_vec_ptr: %p, training_data_vec_ptr = %p, k_max: %d\n", 
-                           data_vec_ptr, training_data_vec_ptr, k_max);
-                    Args_phase_one args = {
-                        .test_vector_ptr = data_vec_ptr,
-                        .train_vector_ptr = training_data_vec_ptr,
-                        .k_max = k_max
-                    };
-                    printf("creating task: func: %p, args: %p\n", &insert_neighbor, &args);
-                    Task new_task = {
-                        .function = (void*) &insert_neighbor,
-                        .args = &args
-                    };
-                    enqueue_task(&new_task);
+                    struct args_neighbor *args_ptr = malloc(sizeof(struct args_neighbor));
+                    printf("\n\nArgs_ptr: %p\n\n", args_ptr);
+                    args_ptr->test_vector_ptr = data_vec_ptr;
+                    args_ptr->train_vector_ptr = training_data_vec_ptr;
+                    args_ptr->k_max = k_max;
+                    printf("Expected:\n   &args: %p\n   &test_vec: %p\n   test_vec.vec.values[0]: %g\n   &neighbor_vec: %p\n   neighbor_vec.vec.values[0]: %g\n",
+                           args_ptr, data_vec_ptr, data_vec_ptr->vec.values[0],
+                           training_data_vec_ptr, training_data_vec_ptr->vec.values[0]);
+                    thread_pool_enqueue(thread_pool, &insert_neighbor, args_ptr);
                 }
 
             }
         }
+    }
+    for (int i = 0; i < total_tasks; i++) {
+        Task *task_ptr = thread_pool_wait(thread_pool);
+        free(task_ptr);
     }
     // 2. Parallel classification and scoring
     // think about efficiency for this phase
@@ -288,7 +293,6 @@ int main(int argc, char** argv) {
     // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
     // as well as information about the k_max nearest neighbors and the classification.
 
-    thread_pool_shutdown(thread_pool);
     for (int i = 0; i < N; i++) {
         data_vec_t *data_vec = data_set.data[i];
         for (int j = 0; j < k_max; j++) {
@@ -305,6 +309,7 @@ int main(int argc, char** argv) {
         free(sub_sets[i].data);
     }
     free(sub_sets);
+    thread_pool_shutdown(thread_pool);
     return(0);
 }
 
@@ -388,48 +393,34 @@ print_list(struct list_head *head, int k_max)
     }
 }
 
-void task_queue_init() {
-    struct task_queue_str *task_queue_ptr = malloc(sizeof(struct task_queue_str));
-    task_queue = *task_queue_ptr;
-    list_init(&task_queue.head);
-    printf("Initialized task_queue at pos %p\n", task_queue_ptr);
-}
-
-Task dequeue_task() {
-    Task *task_ptr = task_queue.task_ptr;
-    struct task_queue_str *next = (struct task_queue_str *) task_queue.head.next;
-    list_del(&task_queue.head);
-    task_queue = *next; 
-    task_count--;
-    return *task_ptr;
-}
-
-void enqueue_task(Task *task_ptr) {
-    struct task_queue_str *new_ptr = malloc(sizeof(struct task_queue_str));
-    printf("enqueuing task: func: %p, args: %p\n", task_ptr->function, task_ptr->args);
-    new_ptr->task_ptr = task_ptr;
-    list_add_tail(&new_ptr->head, &task_queue.head);
-    task_queue = *new_ptr;
-    task_count++;
-}
-
-void execute_task(Task *task_ptr) {
-    printf("executing: func: %p, args: %p\n", task_ptr->function, task_ptr->args);
-    task_ptr->function(task_ptr->args);
-}
-
 void *start_thread(void* args) {
     while (1) {
         pthread_mutex_lock(&mutex_task);
         while (task_count == 0) {
             pthread_cond_wait(&cond_task, &mutex_task);
         }
-        // dequeue and execute task
-        Task task = dequeue_task();
-        printf("dequeued task: func: %p, args: %p\n", task.function, task.args);
-        execute_task(&task);
+        // // dequeue and execute task
+        // Task task = dequeue_task();
+        // printf("dequeued task: func: %p, args: %p\n", task.function, task.args);
+        Task task = task_queue[0];
+        int i;
+        for (i = 0; i < task_count - 1; i++) {
+            task_queue[i] = task_queue[i + 1];
+        }
+        task_count--;
         pthread_mutex_unlock(&mutex_task);
+        execute_task(&task);
+        free(task.args);
     }
+}
+
+void execute_task(Task *task_ptr) {
+    task_ptr->function(task_ptr->args);
+    pthread_mutex_lock(&mutex_done_task);
+    done_tasks[done_task_count] = *task_ptr;
+    done_task_count++;
+    pthread_mutex_unlock(&mutex_done_task);
+    pthread_cond_signal(&cond_done_task);
 }
 
 // create thread pool and start thread count worker threads
@@ -447,14 +438,29 @@ void thread_pool_init(thread_pool_t* thread_pool, int thread_count) {
 // args might contain a set of indices to data vectors to calculate
 // data type of arg can change depending on computation phase
 void thread_pool_enqueue(thread_pool_t* thread_pool, void *(*function) (void *), void* args) {
-    pthread_mutex_lock(&mutex_task);
+    total_tasks++;
     Task *task_ptr = malloc(sizeof(Task));
     task_ptr->function = function;
     task_ptr->args = args;    
-    // enqeue task 
-    enqueue_task(task_ptr);
-    pthread_mutex_unlock(&mutex_task);
-    pthread_cond_signal(&cond_task);
+    submitTask(task_ptr);
+}
+
+Task* thread_pool_wait(thread_pool_t* thread_pool) {
+    pthread_mutex_lock(&mutex_done_task);
+    while (done_task_count == 0) {
+        // cond wait
+        pthread_cond_wait(&cond_done_task, &mutex_done_task);
+    } 
+    // this fucks up after moving
+    Task task = done_tasks[0];
+    Task *task_ptr = malloc(sizeof(Task));
+    *task_ptr = task;
+    for (int i = 0; i < done_task_count - 1; i++) {
+        done_tasks[i] = done_tasks[i + 1];
+    }
+    done_task_count--;
+    pthread_mutex_unlock(&mutex_done_task);
+    return task_ptr;
 }
 
 // End all worker threads and free all allocated memory
@@ -463,6 +469,7 @@ void thread_pool_shutdown(thread_pool_t* thread_pool) {
     for (int i = 0; i < thread_pool->count; i++) {
         pthread_cancel(thread_pool->threads[i]);
     }
+    free(thread_pool->threads);
     free(thread_pool);
 }
 
@@ -546,11 +553,11 @@ void split_data_set(data_set_t* src, data_set_t* dest, int B) {
     }
 }
 
-double euclideanDistance(data_vec_t *test_vec, data_vec_t *train_vec) {
+double euclideanDistance(data_vec_t *test_vec_ptr, data_vec_t *train_vec_ptr) {
     double dist = 0;
-    int dims = test_vec->vec.dims;
+    int dims = test_vec_ptr->vec.dims;
     for (int m = 0; m < dims; m++) {
-        dist += pow(test_vec->vec.values[m] - train_vec->vec.values[m], 2);
+        dist += pow(test_vec_ptr->vec.values[m] - train_vec_ptr->vec.values[m], 2);
     }
     return dist;
 }
