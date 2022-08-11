@@ -128,7 +128,6 @@ list_empty(struct list_head *head);
 
 int task_count = 0;
 int done_task_count = 0;
-int phase_task_count[] = {0, 0, 0};
  
 void submitTask(Task *task_ptr);
 
@@ -189,18 +188,6 @@ int evaluate_classifcations(struct args_score *args);
 
 void compute_quality(struct args_quality *args);
 
-void inc_phase_task_count(int phase) {
-    pthread_mutex_lock(&mutex_phase_task);
-    phase_task_count[phase]++;
-    pthread_mutex_unlock(&mutex_phase_task);
-}
-
-void dec_phase_task_count(int phase) {
-    pthread_mutex_lock(&mutex_phase_task);
-    phase_task_count[phase]--;
-    pthread_mutex_unlock(&mutex_phase_task);
-}
-
 int main(int argc, char** argv) {
     if (argc != 6) {
         printUsage();
@@ -250,9 +237,8 @@ int main(int argc, char** argv) {
     // 3 computation phases, outside of pool, generalization is important here
     // overlap is allowed here, if one task in phase 1 is complete, tasks in the next phase is allowed to start
   
-    // 1. Parallel computation of k_max nearest neighbors
+    int patient_tasks = 0;
     for (int i = 0; i < B; i++) {
-        // distance of each vector of test set to all vectors in all training sets
         data_set_t test_set = sub_sets[i];
         for (long j = 0; j < test_set.size; j++) {
             data_vec_t *data_vec_ptr = test_set.data[j];
@@ -264,59 +250,43 @@ int main(int argc, char** argv) {
             args_ptr->B = B;
             args_ptr->test_set_idx = i;
             thread_pool_enqueue(thread_pool, &compute_nearest_neighbors, args_ptr);
-            inc_phase_task_count(args_ptr->phase);
+            patient_tasks++;
         }
-    }
-    while (phase_task_count[0] > 0) {
-        Task *task_ptr = thread_pool_wait(thread_pool);
-        struct args_neighbor *args = task_ptr->args;
-        if (args->phase != 0) {
-            // printf("fast thread phase: %d\n", args->phase);
-            pthread_mutex_lock(&mutex_done_task);
-            enqueue_task(&done_tasks, task_ptr);
-            done_task_count++;
-            pthread_mutex_unlock(&mutex_done_task);
-            continue;
-        }
-        dec_phase_task_count(0);
-        data_vec_t *test_vec_ptr = args->test_vec_ptr;
-        free(task_ptr->args);
-        free(task_ptr);
-        struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
-        args_ptr->phase = 1;
-        args_ptr->test_vec_ptr = test_vec_ptr;
-        args_ptr->k_max = k_max;
-        args_ptr->total_classes = total_classes;
-        thread_pool_enqueue(thread_pool, &compute_classifcations, args_ptr);
-        inc_phase_task_count(args_ptr->phase);
     }
     int *correct_classifications_k = calloc(k_max, sizeof(int));
-    while (phase_task_count[1] > 0) {
+    while (patient_tasks > 0) {
+        patient_tasks--;
         Task *task_ptr = thread_pool_wait(thread_pool);
-        struct args_classify *args = task_ptr->args;
-        if (args->phase != 1) {
-            // printf("fast thread phase: %d\n", args->phase);
-            pthread_mutex_lock(&mutex_done_task);
-            enqueue_task(&done_tasks, task_ptr);
-            done_task_count++;
-            pthread_mutex_unlock(&mutex_done_task);
-            continue;
-        }
-        dec_phase_task_count(1);
+        struct args_neighbor *args = task_ptr->args;
         data_vec_t *test_vec_ptr = args->test_vec_ptr;
-        free(task_ptr->args);
-        free(task_ptr);
-        struct args_score *args_ptr = malloc(sizeof(struct args_score));
-        args_ptr->phase = 2;
-        args_ptr->test_vec_ptr = test_vec_ptr;
-        args_ptr->k_max = k_max;
-        args_ptr->correct_classifications_k_ptr = &correct_classifications_k;
-        thread_pool_enqueue(thread_pool, &evaluate_classifcations, args_ptr);
-        inc_phase_task_count(args_ptr->phase);
-    }
-    for (int i = 0; i < phase_task_count[2]; i++) {
-        Task *task_ptr = thread_pool_wait(thread_pool);
-        struct args_score *args = task_ptr->args;
+        switch (args->phase) {
+            case 0:
+            {
+                struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
+                args_ptr->phase = 1;
+                args_ptr->test_vec_ptr = test_vec_ptr;
+                args_ptr->k_max = k_max;
+                args_ptr->total_classes = total_classes;
+                thread_pool_enqueue(thread_pool, &compute_classifcations, args_ptr);
+                patient_tasks++;
+                break;
+            }
+            case 1:
+            {
+                struct args_score *args_ptr = malloc(sizeof(struct args_score));
+                args_ptr->phase = 2;
+                args_ptr->test_vec_ptr = test_vec_ptr;
+                args_ptr->k_max = k_max;
+                args_ptr->correct_classifications_k_ptr = &correct_classifications_k;
+                thread_pool_enqueue(thread_pool, &evaluate_classifcations, args_ptr);
+                patient_tasks++;
+                break;
+            }
+            default:
+            {
+                break;
+            }
+        }
         free(task_ptr->args);
         free(task_ptr);
     }
@@ -331,7 +301,6 @@ int main(int argc, char** argv) {
     }
     while (done_task_count > 0) {
         Task *task_ptr = thread_pool_wait(thread_pool);
-        struct args_score *args = task_ptr->args;
         free(task_ptr->args);
         free(task_ptr);
     }
