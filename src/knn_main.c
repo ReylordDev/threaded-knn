@@ -45,10 +45,12 @@ typedef struct {
     int count;
 } thread_pool_t;
 
-pthread_mutex_t mutex_task = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_task = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex_open_task = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond_open_task = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_done_task = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_done_task = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t mutex_phase_task = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_correct_classifications = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct {
     void *(*function) (void *);
@@ -56,6 +58,7 @@ typedef struct {
 } Task;
 
 struct args_neighbor {
+    int phase;
     data_vec_t *test_vec_ptr;
     data_set_t **sub_sets_ptr;
     int k_max;
@@ -64,16 +67,24 @@ struct args_neighbor {
 };
 
 struct args_classify {
+    int phase;
     data_vec_t *test_vec_ptr;
     int k_max;
     int total_classes;
 };
 
 struct args_score {
-    int N;
-    data_set_t *data_set_ptr;
+    int phase;
+    data_vec_t *test_vec_ptr;
+    int k_max;
+    int **correct_classifications_k_ptr;
+};
+
+struct args_quality {
     int k;
-    double *class_qual_ptr;
+    long correct;
+    long total;
+    double **result_ptr;
 };
 
 struct task_queue {
@@ -115,12 +126,9 @@ list_move_tail(struct list_head *entry, struct list_head *head);
 extern int
 list_empty(struct list_head *head);
 
-// temp
 int task_count = 0;
 int done_task_count = 0;
-int phase_one_tasks_count = 0;
-int phase_two_tasks_count = 0;
-int phase_three_tasks_count = 0;
+int phase_task_count[] = {0, 0, 0};
  
 void submitTask(Task *task_ptr);
 
@@ -162,7 +170,7 @@ void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_c
 
 void readInputData(FILE *file, data_set_t *data_set, int dims);
 
-double euclideanDistance(data_vec_t *test_vec, data_vec_t *train_vec);
+double euclidean_distance_squared(data_vec_t *test_vec, data_vec_t *train_vec);
 
 void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec, 
                    double distance, int k_max);
@@ -179,6 +187,20 @@ int compute_classifcations(struct args_classify *args);
 
 int evaluate_classifcations(struct args_score *args);
 
+void compute_quality(struct args_quality *args);
+
+void inc_phase_task_count(int phase) {
+    pthread_mutex_lock(&mutex_phase_task);
+    phase_task_count[phase]++;
+    pthread_mutex_unlock(&mutex_phase_task);
+}
+
+void dec_phase_task_count(int phase) {
+    pthread_mutex_lock(&mutex_phase_task);
+    phase_task_count[phase]--;
+    pthread_mutex_unlock(&mutex_phase_task);
+}
+
 int main(int argc, char** argv) {
     if (argc != 6) {
         printUsage();
@@ -189,7 +211,7 @@ int main(int argc, char** argv) {
     int k_max = (int) strtol(argv[3], NULL, 10);
     int B = (int) strtol(argv[4], NULL, 10);
     int n_threads = (int) strtol(argv[5], NULL, 10);
-    printf("fileName: %s, N: %ld, k_max: %d, B: %d, n_threads: %d\n", fileName, N, k_max, B, n_threads);
+    // printf("fileName: %s, N: %ld, k_max: %d, B: %d, n_threads: %d\n", fileName, N, k_max, B, n_threads);
 
     // create worker threads
     thread_pool_t *thread_pool = malloc(sizeof(thread_pool_t));
@@ -206,7 +228,7 @@ int main(int argc, char** argv) {
     int vec_dim;
     int total_classes;
     readInputHeader(file, &N_max, &vec_dim, &total_classes);
-    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, total_classes);
+    // printf("N_max: %ld, vec_dim: %d, class_count: %d\n", N_max, vec_dim, total_classes);
 
     if (N_max < N) N = N_max;
 
@@ -235,74 +257,94 @@ int main(int argc, char** argv) {
         for (long j = 0; j < test_set.size; j++) {
             data_vec_t *data_vec_ptr = test_set.data[j];
             struct args_neighbor *args_ptr = malloc(sizeof(struct args_neighbor));
+            args_ptr->phase = 0;
             args_ptr->test_vec_ptr = data_vec_ptr;
             args_ptr->sub_sets_ptr = &sub_sets;
             args_ptr->k_max = k_max;
             args_ptr->B = B;
             args_ptr->test_set_idx = i;
             thread_pool_enqueue(thread_pool, &compute_nearest_neighbors, args_ptr);
-            phase_one_tasks_count++;
+            inc_phase_task_count(args_ptr->phase);
         }
     }
-    // 2. Parallel classification and scoring
-    // think about efficiency for this phase
-    // for set in B testsets
-    for (int i = 0; i < B; i++) {
-        data_set_t test_set = sub_sets[i];
-        // classification of all test vectors in set
-        for (long j = 0; j < test_set.size; j++) {
-            data_vec_t *test_vec_ptr = test_set.data[j];
-            while (test_vec_ptr->completed_phases == 0) {
-                // not sure if allowed
-                // replace with cond var
-                usleep(100);
-            }
-            Task *task_ptr = thread_pool_wait(thread_pool);
-            free(task_ptr->args);
-            free(task_ptr);
-            // printf("phase 1 completed task_ptr: %p\n", task_ptr);
-            struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
-            args_ptr->test_vec_ptr = test_vec_ptr;
-            args_ptr->k_max = k_max;
-            args_ptr->total_classes = total_classes;
-            thread_pool_enqueue(thread_pool, &compute_classifcations, args_ptr);
-            phase_two_tasks_count++;
-        }
-    }
-    for (int i = 0; i < phase_two_tasks_count; i++) {
+    while (phase_task_count[0] > 0) {
         Task *task_ptr = thread_pool_wait(thread_pool);
+        struct args_neighbor *args = task_ptr->args;
+        if (args->phase != 0) {
+            // printf("fast thread phase: %d\n", args->phase);
+            pthread_mutex_lock(&mutex_done_task);
+            enqueue_task(&done_tasks, task_ptr);
+            done_task_count++;
+            pthread_mutex_unlock(&mutex_done_task);
+            continue;
+        }
+        dec_phase_task_count(0);
+        data_vec_t *test_vec_ptr = args->test_vec_ptr;
         free(task_ptr->args);
         free(task_ptr);
-        // printf("phase 2 completed task_ptr: %p\n", task_ptr);
+        struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
+        args_ptr->phase = 1;
+        args_ptr->test_vec_ptr = test_vec_ptr;
+        args_ptr->k_max = k_max;
+        args_ptr->total_classes = total_classes;
+        thread_pool_enqueue(thread_pool, &compute_classifcations, args_ptr);
+        inc_phase_task_count(args_ptr->phase);
     }
-    // 3. evaluation of a classification quality
-    for (int k = 0; k < k_max; k++) {
+    int *correct_classifications_k = calloc(k_max, sizeof(int));
+    while (phase_task_count[1] > 0) {
+        Task *task_ptr = thread_pool_wait(thread_pool);
+        struct args_classify *args = task_ptr->args;
+        if (args->phase != 1) {
+            // printf("fast thread phase: %d\n", args->phase);
+            pthread_mutex_lock(&mutex_done_task);
+            enqueue_task(&done_tasks, task_ptr);
+            done_task_count++;
+            pthread_mutex_unlock(&mutex_done_task);
+            continue;
+        }
+        dec_phase_task_count(1);
+        data_vec_t *test_vec_ptr = args->test_vec_ptr;
+        free(task_ptr->args);
+        free(task_ptr);
         struct args_score *args_ptr = malloc(sizeof(struct args_score));
-        args_ptr->data_set_ptr = &data_set;
-        args_ptr->k = k;
-        args_ptr->N = N;
+        args_ptr->phase = 2;
+        args_ptr->test_vec_ptr = test_vec_ptr;
+        args_ptr->k_max = k_max;
+        args_ptr->correct_classifications_k_ptr = &correct_classifications_k;
         thread_pool_enqueue(thread_pool, &evaluate_classifcations, args_ptr);
-        phase_three_tasks_count++;
+        inc_phase_task_count(args_ptr->phase);
     }
-    double classification_qualities[k_max];
-    for (int i = 0; i < phase_three_tasks_count; i++) {
+    for (int i = 0; i < phase_task_count[2]; i++) {
         Task *task_ptr = thread_pool_wait(thread_pool);
         struct args_score *args = task_ptr->args;
-        classification_qualities[args->k] = *args->class_qual_ptr;
-        free(args->class_qual_ptr);
+        free(task_ptr->args);
+        free(task_ptr);
+    }
+    double *class_qual_k = calloc(k_max, sizeof(double));
+    for (int k = 0; k < k_max; k++) {
+        struct args_quality *args_ptr = malloc(sizeof(struct args_quality));
+        args_ptr->k = k;
+        args_ptr->correct = correct_classifications_k[k];
+        args_ptr->total = N;
+        args_ptr->result_ptr = &class_qual_k;
+        thread_pool_enqueue(thread_pool, &compute_quality, args_ptr);
+    }
+    while (done_task_count > 0) {
+        Task *task_ptr = thread_pool_wait(thread_pool);
+        struct args_score *args = task_ptr->args;
         free(task_ptr->args);
         free(task_ptr);
     }
     int k_opt = 0;
     double best_classification = 0.0;
     for (int k = 0; k < k_max; k++) {
-        printf("%d %g\n", k, classification_qualities[k]);
-        if (classification_qualities[k] >= best_classification) {
-            best_classification = classification_qualities[k];
+        double class_qual = class_qual_k[k];
+        printf("%d %g\n", k, class_qual);
+        if (class_qual >= best_classification) {
+            best_classification = class_qual;
             k_opt = k;
         }
     }
-    // sort the phases stuff out
     printf("%d\n", k_opt);
 
     // results of these 3 phases can be stored in a single data structure, containing the data vectors and their classes,
@@ -429,34 +471,30 @@ Task* dequeue_task(struct task_queue *queue_ptr) {
 
 void *start_thread(void* args) {
     while (1) {
-        pthread_mutex_lock(&mutex_task);
+        pthread_mutex_lock(&mutex_open_task);
         while (task_count == 0) {
-            pthread_cond_wait(&cond_task, &mutex_task);
+            pthread_cond_wait(&cond_open_task, &mutex_open_task);
         }
         // // dequeue and execute task
-        // Task task = dequeue_task();
         Task *task_ptr = dequeue_task(&open_tasks);
-        // printf("dequeued open task_ptr: %p\n", task_ptr);
         task_count--;
-        pthread_mutex_unlock(&mutex_task);
+        pthread_mutex_unlock(&mutex_open_task);
         execute_task(task_ptr);
     }
 }
 
 void submitTask(Task *task_ptr) {
-    pthread_mutex_lock(&mutex_task);
+    pthread_mutex_lock(&mutex_open_task);
     enqueue_task(&open_tasks, task_ptr);
-    // printf("submitted task_ptr: %p\n", task_ptr);
     task_count++;
-    pthread_mutex_unlock(&mutex_task);
-    pthread_cond_signal(&cond_task);
+    pthread_mutex_unlock(&mutex_open_task);
+    pthread_cond_signal(&cond_open_task);
 }
 
 void execute_task(Task *task_ptr) {
     task_ptr->function(task_ptr->args);
     pthread_mutex_lock(&mutex_done_task);
     enqueue_task(&done_tasks, task_ptr);
-    // printf("executed task_ptr: %p\n", task_ptr);
     done_task_count++;
     pthread_mutex_unlock(&mutex_done_task);
     pthread_cond_signal(&cond_done_task);
@@ -488,11 +526,9 @@ void thread_pool_enqueue(thread_pool_t* thread_pool, void *(*function) (void *),
 Task* thread_pool_wait(thread_pool_t* thread_pool) {
     pthread_mutex_lock(&mutex_done_task);
     while (done_task_count == 0) {
-        // cond wait
         pthread_cond_wait(&cond_done_task, &mutex_done_task);
     } 
     Task *task_ptr = dequeue_task(&done_tasks);
-    // printf("dequeued done task_ptr: %p\n", task_ptr);
     done_task_count--;
     pthread_mutex_unlock(&mutex_done_task);
     return task_ptr;
@@ -589,7 +625,7 @@ void split_data_set(data_set_t* src, data_set_t* dest, int B) {
     }
 }
 
-double euclideanDistance(data_vec_t *test_vec_ptr, data_vec_t *train_vec_ptr) {
+double euclidean_distance_squared(data_vec_t *test_vec_ptr, data_vec_t *train_vec_ptr) {
     double dist = 0;
     int dims = test_vec_ptr->vec.dims;
     for (int m = 0; m < dims; m++) {
@@ -669,7 +705,7 @@ int compute_nearest_neighbors(struct args_neighbor *args_ptr) {
         data_set_t training_set = sub_sets[k];
         for (long l = 0; l < training_set.size; l++) {
             data_vec_t *train_vec_ptr = training_set.data[l];
-            double distance = euclideanDistance(test_vec_ptr, train_vec_ptr);
+            double distance = euclidean_distance_squared(test_vec_ptr, train_vec_ptr);
             sorted_insert(test_vec_ptr, train_vec_ptr, distance, k_max);
         }
     }
@@ -693,69 +729,23 @@ int compute_classifcations(struct args_classify *args) {
  
 // return the phase?
 int evaluate_classifcations(struct args_score *args) {
-    data_set_t *data_set_ptr = args->data_set_ptr; 
-    int k = args->k;
-    int N = args->N;
-    long correct_qualification_counter = 0;
-    for (long i = 0; i < N; i++) {
-        data_vec_t *data_vec_ptr = data_set_ptr->data[i];
+    data_vec_t *data_vec_ptr = args->test_vec_ptr;
+    int k_max = args->k_max;
+    int *args_classification_ptr = *args->correct_classifications_k_ptr;
+    for (int k = 0; k < k_max; k++) {
         int correct_class = data_vec_ptr->class;
         struct classification *classification = data_vec_ptr->classifications_ptr[k];
-        // compare classification of knn with original class
         if (classification->class == correct_class) {
-            correct_qualification_counter++;
+            pthread_mutex_lock(&mutex_correct_classifications);
+            args_classification_ptr[k]++;
+            pthread_mutex_unlock(&mutex_correct_classifications);
         }
     }
-    // calculate ratio: correct / all
-        // also in parallel
-    double *class_qual_ptr = malloc(sizeof(double));
-    *class_qual_ptr = (double) correct_qualification_counter / (double) N;
-    // save the classification quality in the args
-    args->class_qual_ptr = class_qual_ptr;
     return 2; 
 }
- 
-int predict_sample(double *values, long N, int k, char *file_name)
-{
-    // read file contents
-    FILE *file;
-    file = fopen(file_name, "r");
-    long N_max;
-    int vec_dim;
-    int total_classes;
-    readInputHeader(file, &N_max, &vec_dim, &total_classes);
-    printf("N_max: %ld, vec_dim: %d, class_count: %d\n", 
-           N_max, vec_dim, total_classes);
-    if (N_max < N) N = N_max;
 
-    data_set_t data_set;
-    data_vec_t **data = malloc(N * sizeof(data_vec_t*));
-    data_set.data = data;
-    data_set.size = N;
-
-    readInputData(file, &data_set, vec_dim);
-    // data_set contains all N vectors
-    fclose(file);
-    
-    // create sample vector
-    data_vec_t *sample_data_vec_ptr = malloc(sizeof(data_vec_t));
-    sample_data_vec_ptr->vec.dims = vec_dim;
-
-    // initialize the neighbor list
-    struct neighbor_info *neighbors_ptr = malloc(sizeof(struct neighbor_info));
-    neighbors_ptr->dist = 0;
-    neighbors_ptr->vec_ptr = &sample_data_vec_ptr->vec;
-    list_init(&neighbors_ptr->head);
-    sample_data_vec_ptr->neighbors = neighbors_ptr;
-     
-    sample_data_vec_ptr->vec.values = values;
-    
-    // fill neighbor list
-    for (long i = 0; i < N; i++) {
-        data_vec_t *training_data_vec = data_set.data[i];
-        double dist = euclideanDistance(sample_data_vec_ptr, training_data_vec);
-        sorted_insert(sample_data_vec_ptr, training_data_vec, dist, k);
-    }
-    //int prediction = classify(sample_data_vec_ptr, k, total_classes);
-    return 0;
+void compute_quality(struct args_quality *args) {
+    double *result = *args->result_ptr;
+    int k = args->k;
+    result[k] = (double) args->correct / (double) args->total;
 }
