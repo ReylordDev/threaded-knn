@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 
+// buffer for lines of the input file
 #define BUFFER_SIZE 1000
 
 struct list_head {
@@ -16,9 +17,10 @@ typedef struct {
     int dims;
 } vec_t;
 
+// list of neighbors of a data_vec with their distance
 struct neighbor_info {
     struct list_head head;
-    vec_t *vec_ptr; // can be used to initialize data_vec
+    vec_t *vec_ptr; // has same adress as the corresponding data_vec_t
     double dist;
 };
 
@@ -331,6 +333,8 @@ int main(int argc, char** argv) {
         free(data_vec->neighbors);
         free(data_vec);
     }
+    free(correct_classifications_k);
+    free(class_qual_k);
     free(data_set.data);
     for (int i = 0; i < B; i++) {
         free(sub_sets[i].data);
