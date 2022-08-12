@@ -234,7 +234,7 @@ int main(int argc, char** argv) {
             args_ptr->k_max = k_max;
             args_ptr->B = B;
             args_ptr->test_set_idx = i;
-            thread_pool_enqueue(thread_pool, &compute_nearest_neighbors, args_ptr);
+            thread_pool_enqueue(thread_pool, (void *(*)(void *)) &compute_nearest_neighbors, args_ptr);
             patient_tasks++;
         }
     }
@@ -251,7 +251,7 @@ int main(int argc, char** argv) {
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
                 args_ptr->total_classes = total_classes;
-                thread_pool_enqueue(thread_pool, &compute_classifications, args_ptr);
+                thread_pool_enqueue(thread_pool, (void *(*)(void *)) &compute_classifications, args_ptr);
                 patient_tasks++;
                 break;
             }
@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
                 args_ptr->correct_classifications_ptr = &correct_classifications_k;
-                thread_pool_enqueue(thread_pool, &evaluate_classifications, args_ptr);
+                thread_pool_enqueue(thread_pool, (void *(*)(void *)) &evaluate_classifications, args_ptr);
                 patient_tasks++;
                 break;
             }
@@ -280,7 +280,7 @@ int main(int argc, char** argv) {
         args_ptr->correct = correct_classifications_k[k];
         args_ptr->total = N;
         args_ptr->result_ptr = &class_qual_k;
-        thread_pool_enqueue(thread_pool, &compute_quality, args_ptr);
+        thread_pool_enqueue(thread_pool, (void *(*)(void *)) &compute_quality, args_ptr);
         patient_tasks++;
     }
     free(correct_classifications_k);
