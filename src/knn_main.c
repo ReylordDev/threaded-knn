@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <unistd.h>
 #include <string.h>
 #include <math.h>
 
@@ -52,13 +51,12 @@ struct args_neighbor {
     data_vec_t *test_vec_ptr;
     data_set_t **sub_sets_ptr;
     int k_max;
-    int test_set_idx;
+    long test_set_idx;
     long B;
 };
 
 // args for the classification (phase 2)
 struct args_classify {
-    int phase;
     data_vec_t *test_vec_ptr;
     int k_max;
     int total_classes;
@@ -66,7 +64,6 @@ struct args_classify {
 
 // args for the evaluation of the classifications (phase 3.1)
 struct args_score {
-    int phase;
     data_vec_t *test_vec_ptr;
     int k_max;
     int **correct_classifications_ptr;
@@ -106,7 +103,7 @@ void list_add_tail(struct list_head *new, struct list_head *head);
 /* deletes entry from list and reinitialize it, returns pointer to entry */
 struct list_head* list_del(struct list_head *entry);
  
-/* free ressources in list */
+/* free resources in list */
 void free_list(struct list_head *anchor);
 
 /* begin thread life-cycle */
@@ -149,19 +146,19 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
 /* find most common class among k closest neighbors */
 void classify(data_vec_t *data_vec_ptr, int k, int total_classes);
 
-/* task function for calculating the neearest neighbors of a vector */
+/* task function for calculating the nearest neighbors of a vector */
 void compute_nearest_neighbors(struct args_neighbor *args);
 
 /* task function for calculating the most common class among k neighbors */
-void compute_classifcations(struct args_classify *args);
+void compute_classifications(struct args_classify *args);
 
 /* task function for adding to the correct classification counter for k classifications */
-void evaluate_classifcations(struct args_score *args);
+void evaluate_classifications(struct args_score *args);
 
-/* task function for computing the over all classificatin quality for a given k */
+/* task function for computing the over all classification quality for a given k */
 void compute_quality(struct args_quality *args);
 
-/* threadless implementation */
+/* thread-less implementation */
 void sequential_implementation(long N, long B, data_set_t *data_set_ptr, data_set_t **sub_sets_ptr, int k_max, int total_classes);
 
 /* queue lengths */
@@ -251,22 +248,20 @@ int main(int argc, char** argv) {
             case 0:
             {
                 struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
-                args_ptr->phase = 1;
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
                 args_ptr->total_classes = total_classes;
-                thread_pool_enqueue(thread_pool, &compute_classifcations, args_ptr);
+                thread_pool_enqueue(thread_pool, &compute_classifications, args_ptr);
                 patient_tasks++;
                 break;
             }
             case 1:
             {
                 struct args_score *args_ptr = malloc(sizeof(struct args_score));
-                args_ptr->phase = 2;
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
                 args_ptr->correct_classifications_ptr = &correct_classifications_k;
-                thread_pool_enqueue(thread_pool, &evaluate_classifcations, args_ptr);
+                thread_pool_enqueue(thread_pool, &evaluate_classifications, args_ptr);
                 patient_tasks++;
                 break;
             }
@@ -421,7 +416,7 @@ void thread_pool_init(thread_pool_t* thread_pool, int thread_count) {
         if (pthread_create(&thread_pool->threads[i], NULL, &start_thread, NULL) != 0) {
             fprintf(stderr, "Failed to create thread %d", i);
         }
-        // this doesnt fix my problem completely but maybe the problem can be ignored
+        // this doesn't fix my problem completely but maybe the problem can be ignored
         pthread_detach(thread_pool->threads[i]);
     }
 }
@@ -588,7 +583,7 @@ void classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
 
 void compute_nearest_neighbors(struct args_neighbor *args_ptr) {
     long B = args_ptr->B;
-    int test_set_idx = args_ptr->test_set_idx;
+    long test_set_idx = args_ptr->test_set_idx;
     data_set_t *sub_sets = *args_ptr->sub_sets_ptr;
     int k_max = args_ptr->k_max;
     data_vec_t *test_vec_ptr = args_ptr->test_vec_ptr;
@@ -603,7 +598,7 @@ void compute_nearest_neighbors(struct args_neighbor *args_ptr) {
     }
 }
 
-void compute_classifcations(struct args_classify *args) {
+void compute_classifications(struct args_classify *args) {
     data_vec_t *test_vec_ptr = args->test_vec_ptr;
     int k_max = args->k_max;
     int total_classes = args->total_classes;
@@ -613,7 +608,7 @@ void compute_classifcations(struct args_classify *args) {
     }
 }
  
-void evaluate_classifcations(struct args_score *args) {
+void evaluate_classifications(struct args_score *args) {
     data_vec_t *data_vec_ptr = args->test_vec_ptr;
     int k_max = args->k_max;
     int *args_classification_ptr = *args->correct_classifications_ptr;
@@ -658,7 +653,7 @@ void sequential_implementation(long N, long B, data_set_t *data_set_ptr, data_se
             args_ptr->test_vec_ptr = data_vec_ptr;
             args_ptr->k_max = k_max;
             args_ptr->total_classes = total_classes;
-            compute_classifcations(args_ptr);
+            compute_classifications(args_ptr);
             free(args_ptr);
         }
     }
@@ -671,7 +666,7 @@ void sequential_implementation(long N, long B, data_set_t *data_set_ptr, data_se
             args_ptr->test_vec_ptr = data_vec_ptr;
             args_ptr->k_max = k_max;
             args_ptr->correct_classifications_ptr = &correct_classifications_k;
-            evaluate_classifcations(args_ptr);
+            evaluate_classifications(args_ptr);
             free(args_ptr);
         }
     }
