@@ -476,7 +476,7 @@ void readInputData(FILE *file, data_set_t *data_set, int dims) {
 
         // initialize the neighbor list
         struct neighbor_info *neighbors_ptr = malloc(sizeof(struct neighbor_info));
-        neighbors_ptr->dist = 0;
+        neighbors_ptr->dist = -1;
         list_init(&neighbors_ptr->head);
         data_vec_ptr->neighbors = neighbors_ptr;
          
@@ -533,8 +533,8 @@ void split_data_set(data_set_t* src, data_set_t* dest, long B) {
 double euclidean_distance_squared(data_vec_t *test_vec_ptr, data_vec_t *train_vec_ptr) {
     double dist = 0;
     int dims = test_vec_ptr->vec.dims;
-    for (int m = 0; m < dims; m++) {
-        dist += pow(test_vec_ptr->vec.values[m] - train_vec_ptr->vec.values[m], 2);
+    for (int i = 0; i < dims; i++) {
+        dist += pow(test_vec_ptr->vec.values[i] - train_vec_ptr->vec.values[i], 2);
     }
     return dist;
 }
@@ -550,7 +550,7 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
             struct neighbor_info *new = malloc(sizeof (struct neighbor_info));
             new->dist = distance;
             new->vec_ptr = &train_vec->vec;
-            if (distance == next->dist) list_add(&new->head, current->next);
+            if (distance >= next->dist) list_add(&new->head, current->next);
             else list_add_tail(&new->head, current->next);
             return;
         } else {
@@ -564,7 +564,7 @@ void classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
     // traverse k closest neighbors and increment class counts
     struct list_head *anchor = &data_vec_ptr->neighbors->head;
     struct list_head *current = anchor;
-    for (int i = 0; i < k; i++) {
+    for (int i = 0; i <= k; i++) {
         struct neighbor_info *next = (struct neighbor_info *) current->next;
         if (current->next == anchor) {
             continue;
@@ -582,16 +582,14 @@ void classify(data_vec_t *data_vec_ptr, int k, int total_classes) {
             winner_class = i;
         } 
     }
-    // adjust for 0 indexing k shift
-    data_vec_ptr->classifications[k-1] = winner_class;
+    data_vec_ptr->classifications[k] = winner_class;
     free(class_count);
 }
 
 void compute_nearest_neighbors(struct args_neighbor *args_ptr) {
     long B = args_ptr->B;
     int test_set_idx = args_ptr->test_set_idx;
-    data_set_t **sub_sets_ptr = args_ptr->sub_sets_ptr;
-    data_set_t *sub_sets = *sub_sets_ptr;
+    data_set_t *sub_sets = *args_ptr->sub_sets_ptr;
     int k_max = args_ptr->k_max;
     data_vec_t *test_vec_ptr = args_ptr->test_vec_ptr;
     for (long i = 0; i < B; i++) {
@@ -610,8 +608,7 @@ void compute_classifcations(struct args_classify *args) {
     int k_max = args->k_max;
     int total_classes = args->total_classes;
     test_vec_ptr->classifications = malloc(k_max * sizeof(int));
-    // for each k
-    for (int k = 1; k <= k_max; k++) {
+    for (int k = 0; k < k_max; k++) {
         classify(test_vec_ptr, k, total_classes);
     }
 }
