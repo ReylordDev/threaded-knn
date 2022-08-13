@@ -48,11 +48,14 @@ typedef struct {
 typedef struct {
     pthread_t *threads;
     int count;
-    // maybe these as pointers: ?
     task_queue open_tasks;
     task_queue done_tasks;
     long open_task_count;
     long done_task_count;
+    pthread_mutex_t mutex_open_task;
+    pthread_cond_t cond_open_task;
+    pthread_mutex_t mutex_done_task;
+    pthread_cond_t cond_done_task;
 } thread_pool_t;
 
 // args for the k_max nearest neighbor calculation (phase 1)
@@ -175,10 +178,6 @@ void sequential_implementation(long N, long B, data_set_t *data_set_ptr,
                                data_set_t **sub_sets_ptr, 
                                int k_max, int total_classes);
  
-pthread_mutex_t mutex_open_task = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_open_task = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t mutex_done_task = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_done_task = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex_correct_classifications = PTHREAD_MUTEX_INITIALIZER;
 
 int main(int argc, char** argv) {
@@ -396,29 +395,36 @@ void free_list(struct list_head *anchor) {
 
 void *start_thread(void* args) {
     thread_pool_t *thread_pool_ptr = (thread_pool_t *) args; 
+
     while (1) {
-        pthread_mutex_lock(&mutex_open_task);
+        pthread_mutex_lock(&thread_pool_ptr->mutex_open_task);
         // wait for a new task
         while (thread_pool_ptr->open_task_count == 0) {
-            pthread_cond_wait(&cond_open_task, &mutex_open_task);
+            pthread_cond_wait(&thread_pool_ptr->cond_open_task, 
+                              &thread_pool_ptr->mutex_open_task);
         }
         // dequeue and execute task
         Task *task_ptr = dequeue_task(&thread_pool_ptr->open_tasks);
         thread_pool_ptr->open_task_count--;
-        pthread_mutex_unlock(&mutex_open_task);
+        pthread_mutex_unlock(&thread_pool_ptr->mutex_open_task);
         task_ptr->function(task_ptr->args);
-        pthread_mutex_lock(&mutex_done_task);
+        pthread_mutex_lock(&thread_pool_ptr->mutex_done_task);
         // enqueue done task into the done queue
         enqueue_task(&thread_pool_ptr->done_tasks, task_ptr);
         thread_pool_ptr->done_task_count++;
-        pthread_mutex_unlock(&mutex_done_task);
-        pthread_cond_signal(&cond_done_task);
+        pthread_mutex_unlock(&thread_pool_ptr->mutex_done_task);
+        pthread_cond_signal(&thread_pool_ptr->cond_done_task);
     }
 }
 
 void thread_pool_init(thread_pool_t* thread_pool, int thread_count) {
     thread_pool->threads = malloc(thread_count * sizeof(pthread_t));
     thread_pool->count = thread_count;
+
+    pthread_mutex_init(&thread_pool->mutex_open_task, NULL);
+    pthread_mutex_init(&thread_pool->mutex_done_task, NULL);
+    pthread_cond_init(&thread_pool->cond_open_task, NULL);
+    pthread_cond_init(&thread_pool->cond_done_task, NULL);
 
     // init task_queues
     init_queue(&thread_pool->open_tasks);
@@ -440,21 +446,21 @@ void thread_pool_enqueue(thread_pool_t* thread_pool,
     Task *task_ptr = malloc(sizeof(Task));
     task_ptr->function = function;
     task_ptr->args = args;    
-    pthread_mutex_lock(&mutex_open_task);
+    pthread_mutex_lock(&thread_pool->mutex_open_task);
     enqueue_task(&thread_pool->open_tasks, task_ptr);
     thread_pool->open_task_count++;
-    pthread_mutex_unlock(&mutex_open_task);
-    pthread_cond_signal(&cond_open_task);
+    pthread_mutex_unlock(&thread_pool->mutex_open_task);
+    pthread_cond_signal(&thread_pool->cond_open_task);
 }
 
 Task* thread_pool_wait(thread_pool_t* thread_pool) {
-    pthread_mutex_lock(&mutex_done_task);
+    pthread_mutex_lock(&thread_pool->mutex_done_task);
     while (thread_pool->done_task_count == 0) {
-        pthread_cond_wait(&cond_done_task, &mutex_done_task);
+        pthread_cond_wait(&thread_pool->cond_done_task, &thread_pool->mutex_done_task);
     } 
     Task *task_ptr = dequeue_task(&thread_pool->done_tasks);
     thread_pool->done_task_count--;
-    pthread_mutex_unlock(&mutex_done_task);
+    pthread_mutex_unlock(&thread_pool->mutex_done_task);
     return task_ptr;
 }
 
@@ -462,6 +468,11 @@ void thread_pool_shutdown(thread_pool_t* thread_pool) {
     for (int i = 0; i < thread_pool->count; i++) {
         pthread_cancel(thread_pool->threads[i]);
     }
+    pthread_mutex_destroy(&thread_pool->mutex_open_task);
+    pthread_mutex_destroy(&thread_pool->mutex_done_task);
+    pthread_cond_destroy(&thread_pool->cond_open_task);
+    pthread_cond_destroy(&thread_pool->cond_done_task);
+
     free(thread_pool->threads);
     free(thread_pool);
 }
@@ -642,9 +653,6 @@ void evaluate_classifications(struct args_score *args) {
             pthread_mutex_lock(&mutex_correct_classifications);
             args_classification_ptr[k]++;
             pthread_mutex_unlock(&mutex_correct_classifications);
-        } else {
-            printf("k: %d %g %g %g %g %d\n", k, data_vec_ptr->vec.values[0], data_vec_ptr->vec.values[1],
-                   data_vec_ptr->vec.values[2], data_vec_ptr->vec.values[3], data_vec_ptr->class);
         }
     }
 }
