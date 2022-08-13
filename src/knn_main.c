@@ -57,6 +57,7 @@ struct args_neighbor {
 
 // args for the classification (phase 2)
 struct args_classify {
+    int phase;
     data_vec_t *test_vec_ptr;
     int k_max;
     int total_classes;
@@ -64,6 +65,7 @@ struct args_classify {
 
 // args for the evaluation of the classifications (phase 3.1)
 struct args_score {
+    int phase;
     data_vec_t *test_vec_ptr;
     int k_max;
     int **correct_classifications_ptr;
@@ -248,6 +250,7 @@ int main(int argc, char** argv) {
             case 0:
             {
                 struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
+                args_ptr->phase = 1;
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
                 args_ptr->total_classes = total_classes;
@@ -258,6 +261,7 @@ int main(int argc, char** argv) {
             case 1:
             {
                 struct args_score *args_ptr = malloc(sizeof(struct args_score));
+                args_ptr->phase = 2;
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
                 args_ptr->correct_classifications_ptr = &correct_classifications_k;
@@ -283,7 +287,6 @@ int main(int argc, char** argv) {
         thread_pool_enqueue(thread_pool, (void *(*)(void *)) &compute_quality, args_ptr);
         patient_tasks++;
     }
-    free(correct_classifications_k);
     while (patient_tasks > 0) {
         Task *task_ptr = thread_pool_wait(thread_pool);
         free(task_ptr->args);
@@ -302,6 +305,7 @@ int main(int argc, char** argv) {
     }
     printf("%d\n", k_opt);
     free(class_qual_k);
+    free(correct_classifications_k);
 
     // free all data vector memory
     for (long i = 0; i < N; i++) {
