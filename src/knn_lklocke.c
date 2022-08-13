@@ -53,8 +53,8 @@ typedef struct {
     long open_task_count;
     long done_task_count;
     pthread_mutex_t mutex_open_task;
-    pthread_cond_t cond_open_task;
     pthread_mutex_t mutex_done_task;
+    pthread_cond_t cond_open_task;
     pthread_cond_t cond_done_task;
 } thread_pool_t;
 
@@ -300,11 +300,10 @@ int main(int argc, char** argv) {
                             &compute_quality, args_ptr);
         unfinished_tasks++;
     }
-    while (unfinished_tasks > 0) {
+    for (; unfinished_tasks > 0; unfinished_tasks--) {
         Task *task_ptr = thread_pool_wait(thread_pool);
         free(task_ptr->args);
         free(task_ptr);
-        unfinished_tasks--;
     }
     int k_opt = 0;
     double best_classification = 0.0;
@@ -418,9 +417,6 @@ void *start_thread(void* args) {
 }
 
 void thread_pool_init(thread_pool_t* thread_pool, int thread_count) {
-    thread_pool->threads = malloc(thread_count * sizeof(pthread_t));
-    thread_pool->count = thread_count;
-
     pthread_mutex_init(&thread_pool->mutex_open_task, NULL);
     pthread_mutex_init(&thread_pool->mutex_done_task, NULL);
     pthread_cond_init(&thread_pool->cond_open_task, NULL);
@@ -432,12 +428,16 @@ void thread_pool_init(thread_pool_t* thread_pool, int thread_count) {
     thread_pool->open_task_count = 0;
     thread_pool->done_task_count = 0;
 
+    thread_pool->threads = malloc(thread_count * sizeof(pthread_t));
+    thread_pool->count = thread_count;
+
     // start threads
     for (int i = 0; i < thread_count; i++) {
         if (pthread_create(&thread_pool->threads[i], NULL, 
                            &start_thread, thread_pool) != 0) {
             fprintf(stderr, "Failed to create thread %d", i);
         }
+        pthread_detach(thread_pool->threads[i]);
     }
 }
 
