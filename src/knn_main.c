@@ -36,14 +36,24 @@ typedef struct {
 } data_set_t;
 
 typedef struct {
-    pthread_t *threads;
-    int count;
-} thread_pool_t;
-
-typedef struct {
     void *(*function) (void *);
     void *args;
 } Task;
+
+typedef struct {
+    struct list_head head;
+    Task *task_ptr;
+} task_queue;
+
+typedef struct {
+    pthread_t *threads;
+    int count;
+    // maybe these as pointers: ?
+    task_queue open_tasks;
+    task_queue done_tasks;
+    long open_task_count;
+    long done_task_count;
+} thread_pool_t;
 
 // args for the k_max nearest neighbor calculation (phase 1)
 struct args_neighbor {
@@ -79,19 +89,14 @@ struct args_quality {
     double **result_ptr;
 };
 
-struct task_queue {
-    struct list_head head;
-    Task *task_ptr;
-} open_tasks, done_tasks;
-
 /* initialize "shortcut links" for empty task queue */
-void init_queue(struct task_queue *queue_ptr);
+void init_queue(task_queue *queue_ptr);
 
 /* add a new task to the back of the queue */
-void enqueue_task(struct task_queue *queue_ptr, Task *task_ptr);
+void enqueue_task(task_queue *queue_ptr, Task *task_ptr);
 
 /* pop the first task from the queue */
-Task* dequeue_task(struct task_queue *queue_ptr);
+Task* dequeue_task(task_queue *queue_ptr);
 
 /* initialize "shortcut links" for empty list */
 void list_init(struct list_head *head);
@@ -120,8 +125,10 @@ void execute_task(Task *task_ptr);
 /* initialize thread pool with thread count threads */
 void thread_pool_init(thread_pool_t* thread_pool, int thread_count);
 
-/* register a new function with args in the task list and signal worker thread */
-void thread_pool_enqueue(thread_pool_t* thread_pool, void *(*function) (void *), void* args);
+/* register a new function with args in the task list 
+ * and signal worker thread */
+void thread_pool_enqueue(thread_pool_t* thread_pool, 
+                         void *(*function) (void *), void* args);
 
 /* wait for any thread to complete a task and return the task */
 Task* thread_pool_wait(thread_pool_t* thread_pool);
@@ -130,7 +137,8 @@ Task* thread_pool_wait(thread_pool_t* thread_pool);
 void thread_pool_shutdown(thread_pool_t* thread_pool);
 
 /* parse first line of input file */
-void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_count_ptr);
+void readInputHeader(FILE *file, long *N_max_ptr, 
+                     int *vec_dim_ptr, int *class_count_ptr);
 
 /* create data set of input file */
 void readInputData(FILE *file, data_set_t *data_set, int dims);
@@ -154,18 +162,18 @@ void compute_nearest_neighbors(struct args_neighbor *args);
 /* task function for calculating the most common class among k neighbors */
 void compute_classifications(struct args_classify *args);
 
-/* task function for adding to the correct classification counter for k classifications */
+/* task function for adding to 
+ * the correct classification counter for k classifications */
 void evaluate_classifications(struct args_score *args);
 
-/* task function for computing the over all classification quality for a given k */
+/* task function for computing 
+ * the over all classification quality for a given k */
 void compute_quality(struct args_quality *args);
 
 /* thread-less implementation */
-void sequential_implementation(long N, long B, data_set_t *data_set_ptr, data_set_t **sub_sets_ptr, int k_max, int total_classes);
-
-/* queue lengths */
-int open_task_count = 0;
-int done_task_count = 0;
+void sequential_implementation(long N, long B, data_set_t *data_set_ptr, 
+                               data_set_t **sub_sets_ptr, 
+                               int k_max, int total_classes);
  
 pthread_mutex_t mutex_open_task = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond_open_task = PTHREAD_COND_INITIALIZER;
@@ -192,10 +200,6 @@ int main(int argc, char** argv) {
         thread_pool_init(thread_pool, n_threads);
     }
 
-    // init task_queues
-    init_queue(&open_tasks);
-    init_queue(&done_tasks);
-
     // read file contents
     FILE *file;
     file = fopen(fileName, "r");
@@ -220,53 +224,62 @@ int main(int argc, char** argv) {
     split_data_set(&data_set, sub_sets, B);
 
     if (n_threads <= 0) {
-        if (n_threads == 0) sequential_implementation(N, B, &data_set, &sub_sets, k_max, total_classes);
+        if (n_threads == 0) sequential_implementation(N, B, &data_set, 
+                                                      &sub_sets, k_max, 
+                                                      total_classes);
         return(0);
     }
 
-    int patient_tasks = 0;
+    int unfinished_tasks = 0;
     for (long i = 0; i < B; i++) {
         data_set_t test_set = sub_sets[i];
         for (long j = 0; j < test_set.size; j++) {
             data_vec_t *data_vec_ptr = test_set.data[j];
-            struct args_neighbor *args_ptr = malloc(sizeof(struct args_neighbor));
+            struct args_neighbor *args_ptr = malloc(sizeof(
+                                                    struct args_neighbor));
             args_ptr->phase = 0;
             args_ptr->test_vec_ptr = data_vec_ptr;
             args_ptr->sub_sets_ptr = &sub_sets;
             args_ptr->k_max = k_max;
             args_ptr->B = B;
             args_ptr->test_set_idx = i;
-            thread_pool_enqueue(thread_pool, (void *(*)(void *)) &compute_nearest_neighbors, args_ptr);
-            patient_tasks++;
+            thread_pool_enqueue(thread_pool, (void *(*)(void *)) 
+                                &compute_nearest_neighbors, args_ptr);
+            unfinished_tasks++;
         }
     }
     int *correct_classifications_k = calloc(k_max, sizeof(int));
-    while (patient_tasks > 0) {
-        patient_tasks--;
+    while (unfinished_tasks > 0) {
+        unfinished_tasks--;
         Task *task_ptr = thread_pool_wait(thread_pool);
         struct args_neighbor *args = task_ptr->args;
         data_vec_t *test_vec_ptr = args->test_vec_ptr;
         switch (args->phase) {
             case 0:
             {
-                struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
+                struct args_classify *args_ptr = malloc(sizeof(
+                                                        struct args_classify));
                 args_ptr->phase = 1;
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
                 args_ptr->total_classes = total_classes;
-                thread_pool_enqueue(thread_pool, (void *(*)(void *)) &compute_classifications, args_ptr);
-                patient_tasks++;
+                thread_pool_enqueue(thread_pool, (void *(*)(void *)) 
+                                    &compute_classifications, args_ptr);
+                unfinished_tasks++;
                 break;
             }
             case 1:
             {
-                struct args_score *args_ptr = malloc(sizeof(struct args_score));
+                struct args_score *args_ptr = malloc(sizeof(
+                                                     struct args_score));
                 args_ptr->phase = 2;
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
-                args_ptr->correct_classifications_ptr = &correct_classifications_k;
-                thread_pool_enqueue(thread_pool, (void *(*)(void *)) &evaluate_classifications, args_ptr);
-                patient_tasks++;
+                args_ptr->correct_classifications_ptr = 
+                        &correct_classifications_k;
+                thread_pool_enqueue(thread_pool, (void *(*)(void *)) 
+                                    &evaluate_classifications, args_ptr);
+                unfinished_tasks++;
                 break;
             }
             default:
@@ -284,14 +297,15 @@ int main(int argc, char** argv) {
         args_ptr->correct = correct_classifications_k[k];
         args_ptr->total = N;
         args_ptr->result_ptr = &class_qual_k;
-        thread_pool_enqueue(thread_pool, (void *(*)(void *)) &compute_quality, args_ptr);
-        patient_tasks++;
+        thread_pool_enqueue(thread_pool, (void *(*)(void *)) 
+                            &compute_quality, args_ptr);
+        unfinished_tasks++;
     }
-    while (patient_tasks > 0) {
+    while (unfinished_tasks > 0) {
         Task *task_ptr = thread_pool_wait(thread_pool);
         free(task_ptr->args);
         free(task_ptr);
-        patient_tasks--;
+        unfinished_tasks--;
     }
     int k_opt = 0;
     double best_classification = 0.0;
@@ -353,18 +367,18 @@ struct list_head* list_del(struct list_head *entry) {
     return entry;
 }
 
-void init_queue(struct task_queue *queue_ptr) {
+void init_queue(task_queue *queue_ptr) {
     list_init(&queue_ptr->head);
 }
 
-void enqueue_task(struct task_queue *queue_ptr, Task *task_ptr) {
-    struct task_queue *new_element_ptr = malloc(sizeof(struct task_queue));
+void enqueue_task(task_queue *queue_ptr, Task *task_ptr) {
+    task_queue *new_element_ptr = malloc(sizeof(task_queue));
     new_element_ptr->task_ptr = task_ptr;
     list_add_tail(&new_element_ptr->head, &queue_ptr->head);
 }
 
-Task* dequeue_task(struct task_queue *queue_ptr) {
-    struct task_queue *element = (struct task_queue*) queue_ptr->head.next;
+Task* dequeue_task(task_queue *queue_ptr) {
+    task_queue *element = (task_queue*) queue_ptr->head.next;
     Task *task_ptr = element->task_ptr;
     list_del(&element->head);
     free(element);
@@ -381,64 +395,65 @@ void free_list(struct list_head *anchor) {
 }
 
 void *start_thread(void* args) {
+    thread_pool_t *thread_pool_ptr = (thread_pool_t *) args; 
     while (1) {
         pthread_mutex_lock(&mutex_open_task);
         // wait for a new task
-        while (open_task_count == 0) {
+        while (thread_pool_ptr->open_task_count == 0) {
             pthread_cond_wait(&cond_open_task, &mutex_open_task);
         }
         // dequeue and execute task
-        Task *task_ptr = dequeue_task(&open_tasks);
-        open_task_count--;
+        Task *task_ptr = dequeue_task(&thread_pool_ptr->open_tasks);
+        thread_pool_ptr->open_task_count--;
         pthread_mutex_unlock(&mutex_open_task);
-        execute_task(task_ptr);
+        task_ptr->function(task_ptr->args);
+        pthread_mutex_lock(&mutex_done_task);
+        // enqueue done task into the done queue
+        enqueue_task(&thread_pool_ptr->done_tasks, task_ptr);
+        thread_pool_ptr->done_task_count++;
+        pthread_mutex_unlock(&mutex_done_task);
+        pthread_cond_signal(&cond_done_task);
     }
-}
-
-void submitTask(Task *task_ptr) {
-    pthread_mutex_lock(&mutex_open_task);
-    enqueue_task(&open_tasks, task_ptr);
-    open_task_count++;
-    pthread_mutex_unlock(&mutex_open_task);
-    pthread_cond_signal(&cond_open_task);
-}
-
-void execute_task(Task *task_ptr) {
-    task_ptr->function(task_ptr->args);
-    pthread_mutex_lock(&mutex_done_task);
-    // enqueue done task into the done queue
-    enqueue_task(&done_tasks, task_ptr);
-    done_task_count++;
-    pthread_mutex_unlock(&mutex_done_task);
-    pthread_cond_signal(&cond_done_task);
 }
 
 void thread_pool_init(thread_pool_t* thread_pool, int thread_count) {
     thread_pool->threads = malloc(thread_count * sizeof(pthread_t));
     thread_pool->count = thread_count;
+
+    // init task_queues
+    init_queue(&thread_pool->open_tasks);
+    init_queue(&thread_pool->done_tasks);
+    thread_pool->open_task_count = 0;
+    thread_pool->done_task_count = 0;
+
+    // start threads
     for (int i = 0; i < thread_count; i++) {
-        if (pthread_create(&thread_pool->threads[i], NULL, &start_thread, NULL) != 0) {
+        if (pthread_create(&thread_pool->threads[i], NULL, 
+                           &start_thread, thread_pool) != 0) {
             fprintf(stderr, "Failed to create thread %d", i);
         }
-        // this doesn't fix my problem completely but maybe the problem can be ignored
-        pthread_detach(thread_pool->threads[i]);
     }
 }
 
-void thread_pool_enqueue(thread_pool_t* thread_pool, void *(*function) (void *), void* args) {
+void thread_pool_enqueue(thread_pool_t* thread_pool, 
+                         void *(*function) (void *), void* args) {
     Task *task_ptr = malloc(sizeof(Task));
     task_ptr->function = function;
     task_ptr->args = args;    
-    submitTask(task_ptr);
+    pthread_mutex_lock(&mutex_open_task);
+    enqueue_task(&thread_pool->open_tasks, task_ptr);
+    thread_pool->open_task_count++;
+    pthread_mutex_unlock(&mutex_open_task);
+    pthread_cond_signal(&cond_open_task);
 }
 
 Task* thread_pool_wait(thread_pool_t* thread_pool) {
     pthread_mutex_lock(&mutex_done_task);
-    while (done_task_count == 0) {
+    while (thread_pool->done_task_count == 0) {
         pthread_cond_wait(&cond_done_task, &mutex_done_task);
     } 
-    Task *task_ptr = dequeue_task(&done_tasks);
-    done_task_count--;
+    Task *task_ptr = dequeue_task(&thread_pool->done_tasks);
+    thread_pool->done_task_count--;
     pthread_mutex_unlock(&mutex_done_task);
     return task_ptr;
 }
@@ -451,7 +466,8 @@ void thread_pool_shutdown(thread_pool_t* thread_pool) {
     free(thread_pool);
 }
 
-void readInputHeader(FILE *file, long *N_max_ptr, int *vec_dim_ptr, int *class_count_ptr) {
+void readInputHeader(FILE *file, long *N_max_ptr, 
+                     int *vec_dim_ptr, int *class_count_ptr) {
     int header_arg_count = 3;
     long headerArguments[header_arg_count];
     for (int i = 0; i < header_arg_count ; i++) {
@@ -474,7 +490,8 @@ void readInputData(FILE *file, data_set_t *data_set, int dims) {
         data_vec_ptr->vec.dims = dims;
 
         // initialize the neighbor list
-        struct neighbor_info *neighbors_ptr = malloc(sizeof(struct neighbor_info));
+        struct neighbor_info *neighbors_ptr = malloc(sizeof(
+                                                     struct neighbor_info));
         neighbors_ptr->dist = -1;
         list_init(&neighbors_ptr->head);
         data_vec_ptr->neighbors = neighbors_ptr;
@@ -529,11 +546,13 @@ void split_data_set(data_set_t* src, data_set_t* dest, long B) {
     }
 }
 
-double euclidean_distance_squared(data_vec_t *test_vec_ptr, data_vec_t *train_vec_ptr) {
+double euclidean_distance_squared(data_vec_t *test_vec_ptr, 
+                                  data_vec_t *train_vec_ptr) {
     double dist = 0;
     int dims = test_vec_ptr->vec.dims;
     for (int i = 0; i < dims; i++) {
-        dist += pow(test_vec_ptr->vec.values[i] - train_vec_ptr->vec.values[i], 2);
+        dist += pow(test_vec_ptr->vec.values[i] 
+                    - train_vec_ptr->vec.values[i], 2);
     }
     return dist;
 }
@@ -544,13 +563,12 @@ void sorted_insert(data_vec_t *test_vec, data_vec_t *train_vec,
     struct list_head *current = anchor;
     for (int i = 0; i < k_max; i++) {
         struct neighbor_info *next = (struct neighbor_info *) current->next;
-        if (distance <= next->dist || current->next == anchor) {
+        if (distance < next->dist || current->next == anchor) {
             // insert if smaller distance or not k_max entries in list
             struct neighbor_info *new = malloc(sizeof (struct neighbor_info));
             new->dist = distance;
             new->vec_ptr = &train_vec->vec;
-            if (distance >= next->dist) list_add(&new->head, current->next);
-            else list_add_tail(&new->head, current->next);
+            list_add_tail(&new->head, current->next);
             return;
         } else {
             current = current->next;
@@ -596,7 +614,8 @@ void compute_nearest_neighbors(struct args_neighbor *args_ptr) {
         data_set_t training_set = sub_sets[i];
         for (long j = 0; j < training_set.size; j++) {
             data_vec_t *train_vec_ptr = training_set.data[j];
-            double distance = euclidean_distance_squared(test_vec_ptr, train_vec_ptr);
+            double distance = euclidean_distance_squared(test_vec_ptr, 
+                                                         train_vec_ptr);
             sorted_insert(test_vec_ptr, train_vec_ptr, distance, k_max);
         }
     }
@@ -633,13 +652,16 @@ void compute_quality(struct args_quality *args) {
     result[k] = (double) args->correct / (double) args->total;
 }
 
-void sequential_implementation(long N, long B, data_set_t *data_set_ptr, data_set_t **sub_sets_ptr, int k_max, int total_classes) {
+void sequential_implementation(long N, long B, data_set_t *data_set_ptr, 
+                               data_set_t **sub_sets_ptr, int k_max, 
+                               int total_classes) {
     data_set_t *sub_sets = *sub_sets_ptr;
     for (long i = 0; i < B; i++) {
         data_set_t test_set = sub_sets[i];
         for (long j = 0; j < test_set.size; j++) {
             data_vec_t *data_vec_ptr = test_set.data[j];
-            struct args_neighbor *args_ptr = malloc(sizeof(struct args_neighbor));
+            struct args_neighbor *args_ptr = malloc(sizeof(
+                                                    struct args_neighbor));
             args_ptr->test_vec_ptr = data_vec_ptr;
             args_ptr->sub_sets_ptr = sub_sets_ptr;
             args_ptr->k_max = k_max;
@@ -653,7 +675,8 @@ void sequential_implementation(long N, long B, data_set_t *data_set_ptr, data_se
         data_set_t test_set = sub_sets[i];
         for (long j = 0; j < test_set.size; j++) {
             data_vec_t *data_vec_ptr = test_set.data[j];
-            struct args_classify *args_ptr = malloc(sizeof(struct args_classify));
+            struct args_classify *args_ptr = malloc(sizeof(
+                                                    struct args_classify));
             args_ptr->test_vec_ptr = data_vec_ptr;
             args_ptr->k_max = k_max;
             args_ptr->total_classes = total_classes;
