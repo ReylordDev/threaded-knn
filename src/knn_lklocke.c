@@ -81,7 +81,7 @@ struct args_score {
     int phase;
     data_vec_t *test_vec_ptr;
     int k_max;
-    int **correct_classifications_ptr;
+    int **correct_class_count_ptr;
 };
 
 // args for the classification quality (phase 3.2)
@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
             unfinished_tasks++;
         }
     }
-    int *correct_classifications_k = calloc(k_max, sizeof(int));
+    int *correct_class_count = calloc(k_max, sizeof(int));
     while (unfinished_tasks > 0) {
         unfinished_tasks--;
         Task *task_ptr = thread_pool_wait(thread_pool);
@@ -274,8 +274,8 @@ int main(int argc, char** argv) {
                 args_ptr->phase = 2;
                 args_ptr->test_vec_ptr = test_vec_ptr;
                 args_ptr->k_max = k_max;
-                args_ptr->correct_classifications_ptr = 
-                        &correct_classifications_k;
+                args_ptr->correct_class_count_ptr = 
+                        &correct_class_count;
                 thread_pool_enqueue(thread_pool, (void *(*)(void *)) 
                                     &evaluate_classifications, args_ptr);
                 unfinished_tasks++;
@@ -293,7 +293,7 @@ int main(int argc, char** argv) {
     for (int k = 0; k < k_max; k++) {
         struct args_quality *args_ptr = malloc(sizeof(struct args_quality));
         args_ptr->k = k;
-        args_ptr->correct = correct_classifications_k[k];
+        args_ptr->correct = correct_class_count[k];
         args_ptr->total = N;
         args_ptr->result_ptr = &class_qual_k;
         thread_pool_enqueue(thread_pool, (void *(*)(void *)) 
@@ -317,7 +317,7 @@ int main(int argc, char** argv) {
     }
     printf("%d\n", k_opt);
     free(class_qual_k);
-    free(correct_classifications_k);
+    free(correct_class_count);
 
     // free all data vector memory
     for (long i = 0; i < N; i++) {
@@ -456,7 +456,8 @@ void thread_pool_enqueue(thread_pool_t* thread_pool,
 Task* thread_pool_wait(thread_pool_t* thread_pool) {
     pthread_mutex_lock(&thread_pool->mutex_done_task);
     while (thread_pool->done_task_count == 0) {
-        pthread_cond_wait(&thread_pool->cond_done_task, &thread_pool->mutex_done_task);
+        pthread_cond_wait(&thread_pool->cond_done_task, 
+                          &thread_pool->mutex_done_task);
     } 
     Task *task_ptr = dequeue_task(&thread_pool->done_tasks);
     thread_pool->done_task_count--;
@@ -519,12 +520,15 @@ void readInputData(FILE *file, data_set_t *data_set, int dims) {
         }
 
         // parse buffer
+        // read first vector
         char *token = strtok(buffer, " ");
         data_vec_ptr->vec.values[0] = strtod(token, NULL);
         for (int j = 1; j < dims; j++) {
+            // read rest of vector
             token = strtok(NULL, " ");
             data_vec_ptr->vec.values[j] = strtod(token, NULL);
         }
+        // read class label
         token = strtok(NULL, " ");
         data_vec_ptr->class = (int) strtol(token, NULL, 10);
          
@@ -645,13 +649,13 @@ void compute_classifications(struct args_classify *args) {
 void evaluate_classifications(struct args_score *args) {
     data_vec_t *data_vec_ptr = args->test_vec_ptr;
     int k_max = args->k_max;
-    int *args_classification_ptr = *args->correct_classifications_ptr;
+    int *correct_class_count_ptr = *args->correct_class_count_ptr;
     for (int k = 0; k < k_max; k++) {
         int correct_class = data_vec_ptr->class;
         int classification = data_vec_ptr->classifications[k];
         if (classification == correct_class) {
             pthread_mutex_lock(&mutex_correct_classifications);
-            args_classification_ptr[k]++;
+            correct_class_count_ptr[k]++;
             pthread_mutex_unlock(&mutex_correct_classifications);
         }
     }
@@ -703,7 +707,7 @@ void sequential_implementation(long N, long B, data_set_t *data_set_ptr,
             struct args_score *args_ptr = malloc(sizeof(struct args_score));
             args_ptr->test_vec_ptr = data_vec_ptr;
             args_ptr->k_max = k_max;
-            args_ptr->correct_classifications_ptr = &correct_classifications_k;
+            args_ptr->correct_class_count_ptr = &correct_classifications_k;
             evaluate_classifications(args_ptr);
             free(args_ptr);
         }
